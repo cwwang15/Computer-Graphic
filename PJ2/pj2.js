@@ -4,10 +4,14 @@ var VSHADER_SOURCE =
   	'attribute vec4 a_Position;\n' +
   	'attribute vec4 a_Color;\n' +
   	'varying vec4 v_Color;\n' +
+  	'uniform mat4 u_ModelMatrix;\n' +
   	'void main() {\n' +
-  	'  gl_Position = a_Position;\n' +
+  	'  gl_Position = u_ModelMatrix * a_Position;\n' +
   	'  v_Color = a_Color;\n' +
   	'}\n';
+// 每秒旋转的角度
+var ANGLE_STEP = 45.0;
+var SCALE_STEP = 0.8;
 
 var FSHADER_SOURCE = 
 	'precision mediump float;\n' +
@@ -21,6 +25,7 @@ function main() {
 	var dragging;
     var mouseX, mouseY;
     var dragHoldX, dragHoldY;
+    var last_time = Date.now();
 	var canvas = document.getElementById('webgl');
 	canvas.addEventListener('mousedown', mouseDownListener, false);
 	document.getElementById('webgl').height = canvasSize.maxY;
@@ -36,7 +41,23 @@ function main() {
 		console.log('loading initShader failed');
 		return;
 	}
-	draw(gl);
+
+	var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
+	if (!u_ModelMatrix) {
+		console.log('loading u_ModelMatrix failed');
+		return;
+	}
+	var currentAngle = 0.0;
+	var currentScale = 1.0;
+	var modelMatrix = new Matrix4();
+	var tick = function() {
+		updateStatus();
+		draw(gl);
+		requestAnimationFrame(tick);
+	}
+	tick();
+
+	// draw(gl);
 
 
 
@@ -65,7 +86,7 @@ function main() {
         } 
         else if (evt.returnValue) {
             evt.returnValue = false;
-        } 
+        }
         return false;
 	}
 
@@ -89,35 +110,58 @@ function main() {
         vertex_pos[dragIndex][1] = (mouseY < minY) ? minY : ((mouseY > maxY) ? maxY : mouseY);
         draw(gl);
 	}
-}
 
-function draw(gl) {
-	var n = initVertexBuffers(gl);
+	function draw(gl) {
+		var n = initVertexBuffers(gl);
 
-	if (n < 0) {
-		console.log('loading \'n\' failed');
-		return;
-	}
-	// console.log(n);
-	// Specify the color for clearing <canvas>
-    gl.clearColor(0, 0, 0, 1);
+		if (n < 0) {
+			console.log('loading \'n\' failed');
+			return;
+		}
+		// console.log(n);
+		// Specify the color for clearing <canvas>
+		gl.clearColor(0, 0, 0, 1);
 
-  	// Clear <canvas>
-  	gl.clear(gl.COLOR_BUFFER_BIT);
+		modelMatrix.setRotate(currentAngle, 0, 0, 1);
+		modelMatrix.scale(currentScale, currentScale, currentScale);
+		gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.elements);
+		// modelMatrix.scale()
+  		// Clear <canvas>
+  		gl.clear(gl.COLOR_BUFFER_BIT);
 
-  	// Draw the rectangle
-  	for (var i = 0, part = n / polygon.length; i < polygon.length; i++) {
-  		gl.drawArrays(gl.TRIANGLE_STRIP, i * part, part);
-  		// gl.drawArrays(gl.LINE_LOOP, i * part, part);
-  	}
-  	if (display_line) {
-  		for (var i = 0, part = num_of_line_point / polygon.length; i < polygon.length; i++) {
-  			gl.drawArrays(gl.LINE_STRIP, n + i * part, part);
+  		// Draw the rectangle
+  		for (var i = 0, part = n / polygon.length; i < polygon.length; i++) {
+  			gl.drawArrays(gl.TRIANGLE_STRIP, i * part, part);
+  			// gl.drawArrays(gl.LINE_LOOP, i * part, part);
   		}
-  	}
-    // gl.drawArrays(gl.TRIANGLES, );
-   	
+  		if (display_line) {
+  			for (var i = 0, part = num_of_line_point / polygon.length; i < polygon.length; i++) {
+  				gl.drawArrays(gl.LINE_STRIP, n + i * part, part);
+  			}
+  		}
+   		 // gl.drawArrays(gl.TRIANGLES, );
+   		
+	}
+
+
+	function updateStatus() {
+		var now = Date.now();
+		var elapsed = now - last_time;
+		last_time = now;
+		
+		currentAngle = (currentAngle + (ANGLE_STEP * elapsed) / 1000.0) % 360;
+		if (currentAngle <= 180) {
+			currentScale = 1.0 - (currentAngle / 180) * SCALE_STEP;
+			// console.log('hello');
+		}
+		else {
+			currentScale = 1.0 + (currentAngle / 180 - 2) * SCALE_STEP;
+		}
+	}
 }
+
+var ok = 1;
+
 
 function hit(vertex, x, y) {
 	var dx;

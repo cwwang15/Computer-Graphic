@@ -12,7 +12,8 @@ var VSHADER_SOURCE =
 // 每秒旋转的角度
 var ANGLE_STEP = 45.0;
 var SCALE_STEP = 0.8;
-
+var display_line = true;
+var num_of_line_point = 0;
 var FSHADER_SOURCE = 
 	'precision mediump float;\n' +
 	'varying vec4 v_Color;\n' +
@@ -26,8 +27,16 @@ function main() {
     var mouseX, mouseY;
     var dragHoldX, dragHoldY;
     var last_time = Date.now();
+    var rotation = false;
+    var currentAngle = 0.0;
+	var currentScale = 1.0;
+	var backupAngle = 0.0;
+	var backupScale = 1.0;
+	var edited = true;
+	var modelMatrix = new Matrix4();
 	var canvas = document.getElementById('webgl');
 	canvas.addEventListener('mousedown', mouseDownListener, false);
+	window.addEventListener('keydown', keyDownListener, false);
 	document.getElementById('webgl').height = canvasSize.maxY;
     document.getElementById('webgl').width = canvasSize.maxX;
 	var gl = getWebGLContext(canvas);
@@ -47,19 +56,69 @@ function main() {
 		console.log('loading u_ModelMatrix failed');
 		return;
 	}
-	var currentAngle = 0.0;
-	var currentScale = 1.0;
-	var modelMatrix = new Matrix4();
+
+	draw(gl);
 	var tick = function() {
-		updateStatus();
-		draw(gl);
-		requestAnimationFrame(tick);
+		if (rotation) {
+			updateStatus();
+			draw(gl);
+			requestAnimationFrame(tick);
+		}
 	}
-	tick();
+	
 
 	// draw(gl);
 
-
+	function keyDownListener(evt) {
+		switch(evt.keyCode) {
+			case 84:
+				if (rotation) {
+					rotation = false;
+				}
+				else {
+					// pressed = 1;
+					if (edited) {
+						edited = false;
+						currentAngle = backupAngle;
+						currentScale = backupScale;
+					}
+					rotation = true;
+					last_time = Date.now();
+					tick();
+			    	canvas.removeEventListener("mousedown", mouseDownListener, false);
+				}
+			    
+			    break; // T
+			case 66: 
+				if (display_line) {
+					display_line = false;
+				}
+				else {
+					display_line = true;
+				}
+				// alert('hello');
+				// alert("display_line is " + display_line);
+				draw(gl);
+				// canvas.addEventListener('mousedown', mouseDownListener, false);
+			    break; // B
+			case 69:
+				if (!edited) {
+					// pressed = 1;
+					backupAngle = currentAngle;
+					backupScale = currentScale;
+					edited = true;
+				}
+				rotation = false;
+				// console.log('currentAngle is ' + currentAngle);
+				// console.log('backupAngle is ' + backupAngle);
+				currentAngle = 0.0;
+				currentScale = 1.0;
+				draw(gl);
+				canvas.addEventListener("mousedown", mouseDownListener, false);
+				break; // E
+			default: break;
+		}
+	}
 
     function mouseDownListener(evt) {
     	var bRect = evt.target.getBoundingClientRect();
@@ -115,7 +174,7 @@ function main() {
 		var n = initVertexBuffers(gl);
 
 		if (n < 0) {
-			console.log('loading \'n\' failed');
+			console.log('loading \'n\' failed because of ' + n);
 			return;
 		}
 		// console.log(n);
@@ -134,6 +193,7 @@ function main() {
   			gl.drawArrays(gl.TRIANGLE_STRIP, i * part, part);
   			// gl.drawArrays(gl.LINE_LOOP, i * part, part);
   		}
+  		// alert("display_line is " + display_line);
   		if (display_line) {
   			for (var i = 0, part = num_of_line_point / polygon.length; i < polygon.length; i++) {
   				gl.drawArrays(gl.LINE_STRIP, n + i * part, part);
@@ -170,8 +230,7 @@ function hit(vertex, x, y) {
 	dy = y - vertex[1];
 	return ((dx * dx + dy * dy) < 100);
 }
-var display_line = true;
-var num_of_line_point = 0;
+
 function getPoints() {
 	var points = [];
 	var order = [1,2,0,3];
@@ -204,6 +263,9 @@ function getPoints() {
 		num_of_line_point = polygon.length * order.length;
 
 	}
+	else {
+		num_of_line_point = 0;
+	}
 
 	return points;
 }
@@ -226,7 +288,7 @@ function initVertexBuffers(gl) {
 	var vertexBuffer = gl.createBuffer();
 	if (!vertexBuffer) {
 		console.log('loading vertexBuffer failed');
-		return -1;
+		return -2;
 	}
 
 	// Bind the buffer object to target
@@ -240,7 +302,7 @@ function initVertexBuffers(gl) {
 	var a_Position = gl.getAttribLocation(gl.program, 'a_Position');
 	if (a_Position < 0) {
 		console.log('loading \'a_Position\' failed');
-		return -1;
+		return -3;
 	}
 	// Assign the buffer object to a_Position variable
 	gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * divisor, 0);
@@ -251,10 +313,11 @@ function initVertexBuffers(gl) {
 	var a_Color = gl.getAttribLocation(gl.program, 'a_Color');
 	if (a_Color < 0) {
 		console.log('loading \'a_Color\' failed');
-		return -1;
+		return -4;
 	}
 	gl.vertexAttribPointer(a_Color, divisor - 2, gl.FLOAT, false, FSIZE * divisor, FSIZE * 2);
 	gl.enableVertexAttribArray(a_Color);
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
+	// console.log('return is ' +(points.length / divisor - num_of_line_point));
 	return points.length / divisor - num_of_line_point;
 }

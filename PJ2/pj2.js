@@ -34,11 +34,13 @@ function main() {
 	var backupScale = 1.0;
 	var edited = true;
 	var modelMatrix = new Matrix4();
+	var optimum = 0;
 	var canvas = document.getElementById('webgl');
 	canvas.addEventListener('mousedown', mouseDownListener, false);
 	window.addEventListener('keydown', keyDownListener, false);
 	document.getElementById('webgl').height = canvasSize.maxY;
     document.getElementById('webgl').width = canvasSize.maxX;
+
 	var gl = getWebGLContext(canvas);
 	if (!gl) {
 		console.log('loading gl failed');
@@ -56,6 +58,8 @@ function main() {
 		console.log('loading u_ModelMatrix failed');
 		return;
 	}
+
+
 
 	draw(gl);
 	var tick = function() {
@@ -96,8 +100,7 @@ function main() {
 				else {
 					display_line = true;
 				}
-				// alert('hello');
-				// alert("display_line is " + display_line);
+
 				draw(gl);
 				// canvas.addEventListener('mousedown', mouseDownListener, false);
 			    break; // B
@@ -171,7 +174,14 @@ function main() {
 	}
 
 	function draw(gl) {
-		var n = initVertexBuffers(gl);
+		if (!rotation) {
+			var n = initVertexBuffers(gl);
+			optimum = n;
+		}
+		else {
+			n = optimum;
+		}
+		
 
 		if (n < 0) {
 			console.log('loading \'n\' failed because of ' + n);
@@ -261,7 +271,6 @@ function getPoints() {
 			}
 		}
 		num_of_line_point = polygon.length * order.length;
-
 	}
 	else {
 		num_of_line_point = 0;

@@ -2,14 +2,18 @@ window.addEventListener('load', main, false);
 
 var VSHADER_SOURCE =
   	'attribute vec4 a_Position;\n' +
+  	'attribute vec4 a_Color;\n' +
+  	'varying vec4 v_Color;\n' +
   	'void main() {\n' +
   	'  gl_Position = a_Position;\n' +
-  	'  gl_PointSize = 10.0;\n' +
+  	'  v_Color = a_Color;\n' +
   	'}\n';
 
 var FSHADER_SOURCE = 
+	'precision mediump float;\n' +
+	'varying vec4 v_Color;\n' +
     'void main() {\n' +
-    '  gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n' +
+    '  gl_FragColor = v_Color;\n' +
     '}\n';
 
 function main() {
@@ -17,7 +21,6 @@ function main() {
 	var dragging;
     var mouseX, mouseY;
     var dragHoldX, dragHoldY;
-
 	var canvas = document.getElementById('webgl');
 	canvas.addEventListener('mousedown', mouseDownListener, false);
 	document.getElementById('webgl').height = canvasSize.maxY;
@@ -27,6 +30,7 @@ function main() {
 		console.log('loading gl failed');
 		return;
 	}
+
 
 	if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
 		console.log('loading initShader failed');
@@ -79,8 +83,10 @@ function main() {
         var bRect = canvas.getBoundingClientRect();
         mouseX = (evt.clientX - bRect.left) * (canvas.width / bRect.width);
         mouseY = (evt.clientY - bRect.top) * (canvas.height / bRect.height);
-        vertex_pos[dragIndex][0] = mouseX;
-        vertex_pos[dragIndex][1] = mouseY;
+        var minX = 1, maxX = canvas.width - minX;
+        var minY = 1, maxY = canvas.height - maxY;
+        vertex_pos[dragIndex][0] = (mouseX < minX) ? minX : ((mouseX > maxX) ? maxX : mouseX);
+        vertex_pos[dragIndex][1] = (mouseY < minY) ? minY : ((mouseY > maxY) ? maxY : mouseY);
         draw(gl);
 	}
 }
@@ -92,7 +98,7 @@ function draw(gl) {
 		console.log('loading \'n\' failed');
 		return;
 	}
-	console.log(n);
+	// console.log(n);
 	// Specify the color for clearing <canvas>
     gl.clearColor(0, 0, 0, 1);
 
@@ -100,7 +106,16 @@ function draw(gl) {
   	gl.clear(gl.COLOR_BUFFER_BIT);
 
   	// Draw the rectangle
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, n);
+  	for (var i = 0, part = n / polygon.length; i < polygon.length; i++) {
+  		gl.drawArrays(gl.TRIANGLE_STRIP, i * part, part);
+  		// gl.drawArrays(gl.LINE_LOOP, i * part, part);
+  	}
+  	if (display_line) {
+  		for (var i = 0, part = num_of_line_point / polygon.length; i < polygon.length; i++) {
+  			gl.drawArrays(gl.LINE_STRIP, n + i * part, part);
+  		}
+  	}
+    // gl.drawArrays(gl.TRIANGLES, );
    	
 }
 
@@ -111,21 +126,45 @@ function hit(vertex, x, y) {
 	dy = y - vertex[1];
 	return ((dx * dx + dy * dy) < 100);
 }
-
-
+var display_line = true;
+var num_of_line_point = 0;
 function getPoints() {
-	points = [];
-	order = [0, 1, 2, 0, 2, 3];
+	var points = [];
+	var order = [1,2,0,3];
 	for (var i = 0; i < polygon.length; i++) {
         for (var j = 0; j < order.length; j++) {
-        	var x = (2 * vertex_pos[polygon[i][order[j]]][0]) / canvasSize.maxX - 1.0;
-        	var y = 1.0 - (2 * vertex_pos[polygon[i][order[j]]][1]) / canvasSize.maxY;
+        	var index = polygon[i][order[j]];
+        	var x = (2 * vertex_pos[index][0]) / canvasSize.maxX - 1.0;
+        	var y = 1.0 - (2 * vertex_pos[index][1]) / canvasSize.maxY;
         	points.push(x);
         	points.push(y);
+        	for (var ii = 0; ii < vertex_color[index].length; ii++) {
+        		points.push(vertex_color[index][ii] / 255.0);
+        	}
         }
 	}
+	if (display_line) {
+		order = [0,1,2,3, 0,2];
+		for (var i = 0; i < polygon.length; i++) {
+			for (var j = 0; j < order.length; j++) {
+				var index = polygon[i][order[j]];
+				var x = (2 * vertex_pos[index][0]) / canvasSize.maxX - 1.0;
+        		var y = 1.0 - (2 * vertex_pos[index][1]) / canvasSize.maxY;
+        		points.push(x);
+        		points.push(y);
+        		points.push(1.0);
+        		points.push(0.0);
+        		points.push(0.0);
+			}
+		}
+		num_of_line_point = polygon.length * order.length;
+
+	}
+
 	return points;
 }
+
+
 
 function initVertexBuffers(gl) {
 	var points = getPoints();
@@ -133,14 +172,11 @@ function initVertexBuffers(gl) {
 		console.log('loading points failed');
 		return -1;
 	}
+	var divisor = 5;
 	// for (var i = 0; i < points.length; i++) {
 	// 	console.log(i + ' ' + points[i]);
 	// }
 	var vertices = new Float32Array(points);
-
-	// for (var i = 0; i < vertices.length; i++) {
-	// 	console.log(vertices[i]);
-	// }
 
 	// console.log(vertices[0]);
 	var vertexBuffer = gl.createBuffer();
@@ -154,15 +190,27 @@ function initVertexBuffers(gl) {
 	// Write date into the buffer object
 	gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
+	var FSIZE = vertices.BYTES_PER_ELEMENT;
+
+    // 这是位置
 	var a_Position = gl.getAttribLocation(gl.program, 'a_Position');
 	if (a_Position < 0) {
 		console.log('loading \'a_Position\' failed');
 		return -1;
 	}
 	// Assign the buffer object to a_Position variable
-	gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, 0, 0);
-
+	gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, FSIZE * divisor, 0);
 	// Enable the assignment to a_Position variable
 	gl.enableVertexAttribArray(a_Position);
-	return points.length / 2;
+
+	// 这是颜色
+	var a_Color = gl.getAttribLocation(gl.program, 'a_Color');
+	if (a_Color < 0) {
+		console.log('loading \'a_Color\' failed');
+		return -1;
+	}
+	gl.vertexAttribPointer(a_Color, divisor - 2, gl.FLOAT, false, FSIZE * divisor, FSIZE * 2);
+	gl.enableVertexAttribArray(a_Color);
+	gl.bindBuffer(gl.ARRAY_BUFFER, null);
+	return points.length / divisor - num_of_line_point;
 }

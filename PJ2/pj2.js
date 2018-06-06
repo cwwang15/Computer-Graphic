@@ -276,6 +276,7 @@ function hit(vertex, x, y) {
 // 获取点及颜色信息
 function getPoints() {
 	var points = [];
+	// 用的TRIANGLE_STRIP，所以将绘制顺序设置为此
 	var order = [1,2,0,3];
 	for (var i = 0; i < polygon.length; i++) {
         for (var j = 0; j < order.length; j++) {
@@ -290,6 +291,7 @@ function getPoints() {
         }
 	}
 	if (display_line) {
+		// 连接线的顺序，没想出更好的办法
 		order = [0,1,2,3, 0,2];
 		for (var i = 0; i < polygon.length; i++) {
 			for (var j = 0; j < order.length; j++) {
@@ -303,9 +305,11 @@ function getPoints() {
         		points.push(0.0);
 			}
 		}
+		// 记录有多少个点用于绘制网格
 		num_of_line_point = polygon.length * order.length;
 	}
 	else {
+		// 这里不能忘，因为没有网格时要置零，否则会出问题
 		num_of_line_point = 0;
 	}
 

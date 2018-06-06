@@ -23,6 +23,33 @@ var TEXTURE_FSHADER_SOURCE =
     '  gl_FragColor = texture2D(u_Sampler, v_TexCoord);\n' +
     '}\n';
 
+var OBJECT_VSHADER_SOURCE =
+    'attribute vec4 a_Position;\n' +
+    'attribute vec4 a_Color;\n' +
+    'attribute vec4 a_Normal;\n' +
+    'uniform mat4 u_MvpMatrix;\n' +
+    'uniform mat4 u_NormalMatrix;\n' +
+    // Ambient light color 环境光还要加上，点光源也要加上，还有颜色
+    'uniform vec3 u_DirectionLight;\n' +
+    'varying vec4 v_Color;\n' +
+    'void main() {\n' +
+    '  gl_Position = u_MvpMatrix * a_Position;\n' +
+    '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
+    '  float nDotL = max(dot(normal, u_DirectionLight), 0.0);\n' +
+    '  vec3 diffuse = a_Color.rgb * nDotL;\n' +
+
+    '  v_Color = vec4(vec3(0.0,0.1,0.1)+diffuse , a_Color.a);\n' +
+    '}\n';
+
+var OBJECT_FSHADER_SOURCE =
+    'precision mediump float;\n' +
+    //'#endif\n' +
+    'varying vec4 v_Color;\n' +
+    'void main() {\n' +
+    '  gl_FragColor = v_Color;\n' +
+    '}\n';
+
+
 var fov;
 var near;
 var far;
@@ -50,13 +77,7 @@ function main() {
         near = CameraPara.near;
         far = CameraPara.far;
         aspect = canvas.width / canvas.height;
-        /*
-         * view 与 project 放一起了
-         */
-        viewProjMatrix.setPerspective(fov, aspect, near, far);
-        viewProjMatrix.lookAt(eye.elements[0], eye.elements[1], eye.elements[2],
-            at.elements[0], at.elements[1], at.elements[2],
-            up.elements[0], up.elements[1], up.elements[2]);
+        changeViewProjMatrix();
     }
 
     // Initialize shaders
@@ -73,7 +94,30 @@ function main() {
         return;
     }
 
-    // Set the vertex information
+
+    /*********************obj文件相关代码start****************************/
+    var objProgram = createProgram(gl, OBJECT_VSHADER_SOURCE, OBJECT_FSHADER_SOURCE);
+
+    if (!objProgram) {
+        console.log('Failed to create obj program');
+        return;
+    }
+    objProgram.a_Position = gl.getAttribLocation(objProgram, 'a_Position');
+    objProgram.a_Color = gl.getAttribLocation(objProgram, 'a_Color');
+    objProgram.a_Normal = gl.getAttribLocation(objProgram, 'a_Normal');
+    objProgram.u_MvpMatrix = gl.getUniformLocation(objProgram, 'u_MvpMatrix');
+    objProgram.u_NormalMatrix = gl.getUniformLocation(objProgram, 'u_NormalMatrix');
+    objProgram.u_DirectionLight = gl.getUniformLocation(objProgram, 'u_DirectionLight');
+
+    if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
+        || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight) {
+        console.log('Failed to get the storage location of attribute or uniform variable');
+        return;
+    }
+    /*********************obj文件相关代码end****************************/
+
+
+        // Set the vertex information
     var box = initVertexBuffers(gl, boxRes);
     if (!box) {
         console.log('Failed to set the vertex information');
@@ -102,7 +146,16 @@ function main() {
 
     // Calculate the view projection matrix
 
+    document.onkeydown = function (evt) {
 
+        if (evt.keyCode === 37) {
+            eye.elements[0] -= 0.01;
+        } else if (evt.keyCode === 39) {
+            eye.elements[0] += 0.01;
+        }
+        changeViewProjMatrix();
+        // printMessage(eye.elements[0]);
+    };
     // Start drawing
     var currentAngle = 0.0; // Current rotation angle (degrees)
     var tick = function () {
@@ -129,6 +182,16 @@ function mytrick(f) {
         window.requestAnimationFrame(f);
         count++;
     }
+}
+
+function changeViewProjMatrix() {
+    /*
+     * view 与 project 放一起了
+     */
+    viewProjMatrix.setPerspective(fov, aspect, near, far);
+    viewProjMatrix.lookAt(eye.elements[0], eye.elements[1], eye.elements[2],
+        at.elements[0], at.elements[1], at.elements[2],
+        up.elements[0], up.elements[1], up.elements[2]);
 }
 
 function initVertexBuffers(gl, target) {
@@ -245,8 +308,9 @@ function drawTexture(gl, program, texEntity, texture) {
     var scale = texEntity.scale;
     g_modelMatrix.setTranslate(trans[0], trans[1], trans[2]);
     g_modelMatrix.scale(scale[0], scale[1], scale[2]);
-
+    // viewProjMatrix.setLookAt()
     g_mvpMatrix.set(viewProjMatrix);
+    printMessage('eye[0]' + eye.elements[0]);
     g_mvpMatrix.multiply(g_modelMatrix);
     gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
 

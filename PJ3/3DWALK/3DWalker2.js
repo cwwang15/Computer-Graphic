@@ -40,7 +40,7 @@ var canvas;
 var gl;
 
 //shaders program
-var light2Program;
+var objProgram;
 
 //相机位置
 var eye = new Vector3(CameraPara.eye);
@@ -84,9 +84,9 @@ function renderScene() {
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    gl.useProgram(light2Program);
+    gl.useProgram(objProgram);
 
-    gl.uniform3f(light2Program.u_DirectionLight, sceneDirectionLight[0], sceneDirectionLight[1], sceneDirectionLight[2]);
+    gl.uniform3f(objProgram.u_DirectionLight, sceneDirectionLight[0], sceneDirectionLight[1], sceneDirectionLight[2]);
 
     for (i = 0; i < SceneObjectList.length; i++) {
         var so = SceneObjectList[i];
@@ -105,15 +105,15 @@ function renderScene() {
             modelMatrix.scale(1.0, 1.0, 1.0);
 
             mvpMatrix.set(projMatrix).multiply(viewMatrix).multiply(modelMatrix);
-            gl.uniformMatrix4fv(light2Program.u_MvpMatrix, false, mvpMatrix.elements);
+            gl.uniformMatrix4fv(objProgram.u_MvpMatrix, false, mvpMatrix.elements);
 
             normalMatrix.setInverseOf(modelMatrix);
             normalMatrix.transpose();
-            gl.uniformMatrix4fv(light2Program.u_NormalMatrix, false, normalMatrix.elements);
+            gl.uniformMatrix4fv(objProgram.u_NormalMatrix, false, normalMatrix.elements);
 
-            initAttributeVariable(gl, light2Program.a_Position, so.model.vertexBuffer);  // Vertex coordinates
-            initAttributeVariable(gl, light2Program.a_Normal, so.model.normalBuffer);    // Normal
-            initAttributeVariable(gl, light2Program.a_Color, so.model.colorBuffer);// Texture coordinates
+            initAttributeVariable(gl, objProgram.a_Position, so.model.vertexBuffer);  // Vertex coordinates
+            initAttributeVariable(gl, objProgram.a_Normal, so.model.normalBuffer);    // Normal
+            initAttributeVariable(gl, objProgram.a_Color, so.model.colorBuffer);// Texture coordinates
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, so.model.indexBuffer);
             // Draw
@@ -140,21 +140,21 @@ function main() {
         return;
     }
 
-    light2Program = createProgram(gl, VSHADER_LIGHT2_SOURCE, FSHADER_LIGHT2_SOURCE);
-    if (!light2Program) {
+    objProgram = createProgram(gl, VSHADER_LIGHT2_SOURCE, FSHADER_LIGHT2_SOURCE);
+    if (!objProgram) {
         console.log('Failed to intialize shaders.');
         return;
     }
 
-    light2Program.a_Position = gl.getAttribLocation(light2Program, 'a_Position');
-    light2Program.a_Color = gl.getAttribLocation(light2Program, 'a_Color');
-    light2Program.a_Normal = gl.getAttribLocation(light2Program, 'a_Normal');
-    light2Program.u_MvpMatrix = gl.getUniformLocation(light2Program, 'u_MvpMatrix');
-    light2Program.u_NormalMatrix = gl.getUniformLocation(light2Program, 'u_NormalMatrix');
-    light2Program.u_DirectionLight = gl.getUniformLocation(light2Program, 'u_DirectionLight');
+    objProgram.a_Position = gl.getAttribLocation(objProgram, 'a_Position');
+    objProgram.a_Color = gl.getAttribLocation(objProgram, 'a_Color');
+    objProgram.a_Normal = gl.getAttribLocation(objProgram, 'a_Normal');
+    objProgram.u_MvpMatrix = gl.getUniformLocation(objProgram, 'u_MvpMatrix');
+    objProgram.u_NormalMatrix = gl.getUniformLocation(objProgram, 'u_NormalMatrix');
+    objProgram.u_DirectionLight = gl.getUniformLocation(objProgram, 'u_DirectionLight');
 
-    if (light2Program.a_Position < 0 || light2Program.a_Color < 0 || light2Program.a_Normal < 0
-        || !light2Program.u_MvpMatrix || !light2Program.u_NormalMatrix || !light2Program.u_DirectionLight) {
+    if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
+        || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight) {
         console.log('Failed to get the storage location of attribute or uniform variable');
         return;
     }
@@ -164,7 +164,7 @@ function main() {
         var e = ObjectList[i];
         var so = new SceneObject();
         // Prepare empty buffer objects for vertex coordinates, colors, and normals
-        so.model = initVertexBuffers(gl, light2Program);
+        so.model = initVertexBuffers(gl, objProgram);
         if (!so.model) {
             console.log('Failed to set the vertex information');
             so.valid = 0;

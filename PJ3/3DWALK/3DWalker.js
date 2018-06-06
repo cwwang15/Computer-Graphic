@@ -30,15 +30,18 @@ var OBJECT_VSHADER_SOURCE =
     'uniform mat4 u_MvpMatrix;\n' +
     'uniform mat4 u_NormalMatrix;\n' +
     // Ambient light color 环境光还要加上，点光源也要加上，还有颜色
+    'uniform vec3 u_AmbientLight;\n' +
+
     'uniform vec3 u_DirectionLight;\n' +
     'varying vec4 v_Color;\n' +
     'void main() {\n' +
     '  gl_Position = u_MvpMatrix * a_Position;\n' +
     '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
     '  float nDotL = max(dot(normal, u_DirectionLight), 0.0);\n' +
+    '  vec3 ambient = u_AmbientLight * a_Color.rgb;\n' +
     '  vec3 diffuse = a_Color.rgb * nDotL;\n' +
 
-    '  v_Color = vec4(vec3(0.0,0.1,0.1)+diffuse , a_Color.a);\n' +
+    '  v_Color = vec4(ambient+diffuse , a_Color.a);\n' +
     '}\n';
 
 
@@ -60,6 +63,7 @@ var eye = new Vector3(CameraPara.eye);
 var at = new Vector3(CameraPara.at);
 var up = new Vector3(CameraPara.up);
 
+
 var viewProjMatrix = new Matrix4();
 
 var objProgram;
@@ -79,6 +83,7 @@ var aLight = sceneAmbientLight;
 // pLight点光源与眼睛相同。
 var pLight = CameraPara.eye;
 var pLightColor = scenePointLightColor;
+var tick;
 
 function main() {
     // Retrieve <canvas> element
@@ -131,9 +136,10 @@ function main() {
     objProgram.u_MvpMatrix = gl.getUniformLocation(objProgram, 'u_MvpMatrix');
     objProgram.u_NormalMatrix = gl.getUniformLocation(objProgram, 'u_NormalMatrix');
     objProgram.u_DirectionLight = gl.getUniformLocation(objProgram, 'u_DirectionLight');
-
+    objProgram.u_AmbientLight = gl.getUniformLocation(objProgram, 'u_AmbientLight');
     if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
-        || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight) {
+        || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight
+        || !objProgram.u_AmbientLight) {
         console.log('Failed to get the storage location of attribute or uniform variable');
         return;
     }
@@ -194,34 +200,39 @@ function main() {
     /*****************************从scene文件读取配置信息 end*********************************/
     // Set the clear color and enable the depth test
     gl.enable(gl.DEPTH_TEST);
-    gl.clearColor(0.0, 0.0, 1.0, 1.0);
+    gl.clearColor(0.0, 0.0, .0, 1.0);
 
     // Calculate the view projection matrix
 
     document.onkeydown = function (evt) {
 
-        if (evt.keyCode === 37) {
-            // eye.elements[0] -= 0.1;
-            at.elements[0] -= 0.1;
-        } else if (evt.keyCode === 39) {
-            // eye.elements[0] += 0.1;
-            at.elements[0] += 0.1;
-        }
-        changeViewProjMatrix();
+        keyDownEvent(evt);
         // printMessage(eye.elements[0]);
     };
+    document.onkeyup = function (evt) {
+        if (evt) {
+            nums = 0;
+        }
+    };
+    // document.onkeyup = function (evt) {
+    //     nums = 3;
+        // printMessage('h');
+    // };
     /*
      * TODO 动画与其它
      */
     // Start drawing
     var currentAngle = 0.0; // Current rotation angle (degrees)
-    var tick = function () {
+
+    tick = function () {
         // currentAngle = animate(currentAngle);  // Update current rotation angle
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
         drawTexture(gl, texProgram, box, boxTexture);
         drawTexture(gl, texProgram, floor, floorTexture);
+        deltaViewProjMatrix(deltaEye, deltaAt, deltaUp);
         renderScene(gl);
+        // last = Date.now();
         window.requestAnimationFrame(tick);
     };
     tick();
@@ -242,6 +253,59 @@ function mytrick(f) {
     }
 }
 
+var last = Date.now();
+
+var deltaEye;
+var deltaAt;
+var deltaUp;
+var nums;
+
+function keyDownEvent(evt) {
+    var cur = Date.now();
+    var elapse = (cur - last) % 64 + 64;
+    last = cur;
+    var move = MOVE_VELOCITY * elapse / 1000;
+    // printMessage(move);
+    if (evt.keyCode === 65) {//a
+        var v = vectorCross(up, vectorMinus(at, eye));
+        deltaEye = vectorMultNum(v, 0.125);
+        deltaAt = new Vector3(deltaEye.elements);
+        deltaUp = new Vector3([0.0,0.0,0.0]);
+        nums = Math.round(move* 1000);
+
+        // for (var i = 0; i < move; i++) {
+        //     eye = vectorAdd(eye, v);
+        //     at = vectorAdd(at, v);
+        //     tick();
+        // }
+
+    }
+    else if (evt.keyCode === 83) { //s
+
+    } else if (evt.keyCode === 68) { //d
+        var v = vectorCross(up, vectorMinus(at, eye));
+        v = vectorReverse(v);
+        deltaEye = vectorMultNum(v, 0.125);
+        deltaAt = new Vector3(deltaEye.elements);
+        deltaUp = new Vector3([0.0,0.0,0.0]);
+        nums = Math.round(move*1000);
+    } else if (evt.keyCode === 87) { //w
+
+    }
+    // printMessage(deltaEye.elements + " nums: " + nums);
+    // changeViewProjMatrix();
+}
+
+function deltaViewProjMatrix(deltaEye, deltaAt, deltaUp) {
+    if (nums > 0) {
+        nums--;
+        eye = vectorAdd(eye, deltaEye);
+        at = vectorAdd(at, deltaAt);
+        up = vectorAdd(up, deltaUp);
+        printMessage(eye.elements + '; at: ' + at.elements + "; nums: " + nums);
+        changeViewProjMatrix();
+    }
+}
 function changeViewProjMatrix() {
     /*
      * view 与 project 放一起了
@@ -250,6 +314,8 @@ function changeViewProjMatrix() {
     viewProjMatrix.lookAt(eye.elements[0], eye.elements[1], eye.elements[2],
         at.elements[0], at.elements[1], at.elements[2],
         up.elements[0], up.elements[1], up.elements[2]);
+
+    pLight = eye.elements;
 }
 
 /**------------------------跟纹理有关的   start------------------------------------------*/
@@ -437,6 +503,7 @@ function renderScene(gl) {
     var normalMatrix = new Matrix4();
     var mvpMatrix = new Matrix4();
     gl.uniform3f(objProgram.u_DirectionLight, dLight[0], dLight[1], dLight[2]);
+    gl.uniform3f(objProgram.u_AmbientLight, aLight[0], aLight[1], aLight[2]);
 
     for (var i = 0, num = sceneObjList.length; i < num; i++) {
         var so = sceneObjList[i];

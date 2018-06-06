@@ -41,7 +41,9 @@ var OBJECT_VSHADER_SOURCE =
     '  v_Color = vec4(vec3(0.0,0.1,0.1)+diffuse , a_Color.a);\n' +
     '}\n';
 
+
 var OBJECT_FSHADER_SOURCE =
+
     'precision mediump float;\n' +
     //'#endif\n' +
     'varying vec4 v_Color;\n' +
@@ -60,8 +62,27 @@ var up = new Vector3(CameraPara.up);
 
 var viewProjMatrix = new Matrix4();
 
+var objProgram;
+var texProgram;
+
+var SceneObject = function () {
+    this.model;  	 //a model contains some vertex buffer
+    this.filePath;   //obj file path
+    this.objDoc;
+    this.drawingInfo;
+    this.transform;
+    this.valid = 0;
+};
+var sceneObjList = [];
+var dLight = sceneDirectionLight;
+var aLight = sceneAmbientLight;
+// pLight点光源与眼睛相同。
+var pLight = CameraPara.eye;
+var pLightColor = scenePointLightColor;
+
 function main() {
     // Retrieve <canvas> element
+
     var canvas = document.getElementById('webgl');
 
     // Get the rendering context for WebGL
@@ -77,11 +98,12 @@ function main() {
         near = CameraPara.near;
         far = CameraPara.far;
         aspect = canvas.width / canvas.height;
+
         changeViewProjMatrix();
     }
 
     // Initialize shaders
-    var texProgram = createProgram(gl, TEXTURE_VSHADER_SOURCE, TEXTURE_FSHADER_SOURCE);
+    texProgram = createProgram(gl, TEXTURE_VSHADER_SOURCE, TEXTURE_FSHADER_SOURCE);
 
     texProgram.a_Position = gl.getAttribLocation(texProgram, 'a_Position');
     texProgram.a_TexCoord = gl.getAttribLocation(texProgram, 'a_TexCoord');
@@ -95,8 +117,9 @@ function main() {
     }
 
 
-    /*********************obj文件相关代码start****************************/
-    var objProgram = createProgram(gl, OBJECT_VSHADER_SOURCE, OBJECT_FSHADER_SOURCE);
+    /*********************obj文件创建program 代码start ****************************/
+
+    objProgram = createProgram(gl, OBJECT_VSHADER_SOURCE, OBJECT_FSHADER_SOURCE);
 
     if (!objProgram) {
         console.log('Failed to create obj program');
@@ -114,16 +137,16 @@ function main() {
         console.log('Failed to get the storage location of attribute or uniform variable');
         return;
     }
-    /*********************obj文件相关代码end****************************/
+    /*********************obj文件创建program 代码end ****************************/
 
 
-        // Set the vertex information
-    var box = initVertexBuffers(gl, boxRes);
+
+    var box = initVertexBuffers4TexEntity(gl, boxRes);
     if (!box) {
         console.log('Failed to set the vertex information');
         return;
     }
-    var floor = initVertexBuffers(gl, floorRes);
+    var floor = initVertexBuffers4TexEntity(gl, floorRes);
     if (!floor) {
         console.log('Failed to init floor');
         return;
@@ -140,6 +163,35 @@ function main() {
         return;
     }
 
+
+    /*****************************从scene文件读取配置信息 start*********************************/
+    for (var i = 0, objNum = ObjectList.length; i < objNum; i++) {
+        var obj = ObjectList[i];
+        var sceneObj = new SceneObject();
+        sceneObj.model = initVertexBuffers(gl, objProgram);
+        if (!sceneObj.model) {
+            console.log('Failed to set the vertex information');
+            sceneObj.valid = 0;
+            continue;
+        }
+        sceneObj.valid = 1;
+        sceneObj.kads = obj.kads;
+        sceneObj.transform = obj.transform;
+        sceneObj.objFilePath = obj.objFilePath;
+        // printMessage(obj.transform[0].content);
+        sceneObj.color = obj.color;
+        // console.log('color: ' + obj.color);
+        // printMessage('scene color: ' + sceneObj.color);
+        //补齐最后一个alpha值
+        if (sceneObj.color.length === 3) {
+            sceneObj.color.push(1.0);
+        }
+        readOBJFile(sceneObj, gl, 1.0, true);
+
+        sceneObjList.push(sceneObj);
+
+    }
+    /*****************************从scene文件读取配置信息 end*********************************/
     // Set the clear color and enable the depth test
     gl.enable(gl.DEPTH_TEST);
     gl.clearColor(0.0, 0.0, 1.0, 1.0);
@@ -149,13 +201,18 @@ function main() {
     document.onkeydown = function (evt) {
 
         if (evt.keyCode === 37) {
-            eye.elements[0] -= 0.01;
+            // eye.elements[0] -= 0.1;
+            at.elements[0] -= 0.1;
         } else if (evt.keyCode === 39) {
-            eye.elements[0] += 0.01;
+            // eye.elements[0] += 0.1;
+            at.elements[0] += 0.1;
         }
         changeViewProjMatrix();
         // printMessage(eye.elements[0]);
     };
+    /*
+     * TODO 动画与其它
+     */
     // Start drawing
     var currentAngle = 0.0; // Current rotation angle (degrees)
     var tick = function () {
@@ -164,6 +221,7 @@ function main() {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
         drawTexture(gl, texProgram, box, boxTexture);
         drawTexture(gl, texProgram, floor, floorTexture);
+        renderScene(gl);
         window.requestAnimationFrame(tick);
     };
     tick();
@@ -194,7 +252,14 @@ function changeViewProjMatrix() {
         up.elements[0], up.elements[1], up.elements[2]);
 }
 
-function initVertexBuffers(gl, target) {
+/**------------------------跟纹理有关的   start------------------------------------------*/
+/**
+ *
+ * @param gl
+ * @param target 要返回哪一个物体的顶点信息
+ * @returns {null}
+ */
+function initVertexBuffers4TexEntity(gl, target) {
 
     var vertices = new Float32Array(target.vertex);
     var texCoords = new Float32Array(target.texCoord);
@@ -219,6 +284,14 @@ function initVertexBuffers(gl, target) {
     return texObj;
 }
 
+/**
+ *
+ * @param gl
+ * @param program 纹理program
+ * @param target 要贴上图像的实例：box、floor
+ * @param flag 用来切换纹理单元的
+ * @returns {*}
+ */
 function initTextures(gl, program, target, flag) {
     // var texture = {};
 
@@ -245,11 +318,15 @@ function initTextures(gl, program, target, flag) {
     return texture0;
 }
 
-function printMessage(message) {
-    var mb = document.getElementById("messageBox");
-    mb.innerHTML = "message:\t" + message;
-}
 
+/**
+ *
+ * @param gl
+ * @param texture 纹理
+ * @param image   图片
+ * @param program
+ * @param flag    确定纹理单元，这里不是0的都当作是1
+ */
 function loadTexture(gl, texture, image, program, flag) {
     // Write the image data to texture object
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);  // Flip the image Y coordinate
@@ -310,7 +387,7 @@ function drawTexture(gl, program, texEntity, texture) {
     g_modelMatrix.scale(scale[0], scale[1], scale[2]);
     // viewProjMatrix.setLookAt()
     g_mvpMatrix.set(viewProjMatrix);
-    printMessage('eye[0]' + eye.elements[0]);
+    // printMessage('eye[0]' + eye.elements[0]);
     g_mvpMatrix.multiply(g_modelMatrix);
     gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
 
@@ -347,6 +424,164 @@ function initElementArrayBufferForLaterUse(gl, data, type) {
     buffer.type = type;
 
     return buffer;
+}
+
+/**--------------------------跟纹理有关的 end ---------------------------------------*/
+
+
+/**--------------------------跟Obj模型有关的 start ---------------------------------------*/
+function renderScene(gl) {
+    // TODO
+    gl.useProgram(objProgram);
+    var modelMatrix = new Matrix4();
+    var normalMatrix = new Matrix4();
+    var mvpMatrix = new Matrix4();
+    gl.uniform3f(objProgram.u_DirectionLight, dLight[0], dLight[1], dLight[2]);
+
+    for (var i = 0, num = sceneObjList.length; i < num; i++) {
+        var so = sceneObjList[i];
+        if (so.objDoc != null && so.objDoc.isMTLComplete()) { // OBJ and all MTLs are available
+            so.drawingInfo = onReadComplete(gl, so.model, so.objDoc);
+            sceneObjList[i].objname = so.objDoc.objects[0].name;
+            so.objname = so.objDoc.objects[0].name;
+            so.objDoc = null;
+        }
+        if (so.drawingInfo) {
+            modelMatrix.setIdentity();
+            manipulateObj(so.transform, modelMatrix);
+
+            mvpMatrix.set(viewProjMatrix).multiply(modelMatrix);
+            gl.uniformMatrix4fv(objProgram.u_MvpMatrix, false, mvpMatrix.elements);
+
+            normalMatrix.setInverseOf(modelMatrix);
+            normalMatrix.transpose();
+            gl.uniformMatrix4fv(objProgram.u_NormalMatrix, false, normalMatrix.elements);
+
+            initAttributeVariable(gl, objProgram.a_Position, so.model.vertexBuffer);  // Vertex coordinates
+            initAttributeVariable(gl, objProgram.a_Normal, so.model.normalBuffer);    // Normal
+            initAttributeVariable(gl, objProgram.a_Color, so.model.colorBuffer);// Texture coordinates
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, so.model.indexBuffer);
+            // Draw
+            gl.drawElements(gl.TRIANGLES, so.drawingInfo.indices.length, gl.UNSIGNED_SHORT, 0);
+        }
+    }
+
+}
+
+/**
+ * 对obj进行转换
+ * @param op          一个数组，记录要执行什么操作
+ * @param modelMatrix 被操作的矩阵
+ */
+function manipulateObj(op, modelMatrix) {
+    for (var i = 0; i < op.length; i++) {
+        // var so = sceneObjList[0];
+
+        // printMessage(op[i].type);
+        if (op[i].type === 'rotate') {
+            modelMatrix.rotate(op[i].content[0], op[i].content[1], op[i].content[2], op[i].content[3]);
+        } else if (op[i].type === 'translate') {
+            modelMatrix.translate(op[i].content[0], op[i].content[1], op[i].content[2]);
+        } else if (op[i].type === 'scale') {
+            modelMatrix.scale(op[i].content[0], op[i].content[1], op[i].content[2]);
+        }
+    }
+}
+
+function initVertexBuffers(gl, program) {
+    var o = {}; // Utilize Object object to return multiple buffer objects
+    o.vertexBuffer = createEmptyArrayBuffer(gl, program.a_Position, 3, gl.FLOAT);
+    o.normalBuffer = createEmptyArrayBuffer(gl, program.a_Normal, 3, gl.FLOAT);
+    o.colorBuffer = createEmptyArrayBuffer(gl, program.a_Color, 4, gl.FLOAT);
+    o.indexBuffer = gl.createBuffer();
+    if (!o.vertexBuffer || !o.normalBuffer || !o.colorBuffer || !o.indexBuffer) {
+        return null;
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    return o;
+}
+
+// Create a buffer object, assign it to attribute variables, and enable the assignment
+function createEmptyArrayBuffer(gl, a_attribute, num, type) {
+    var buffer = gl.createBuffer();  // Create a buffer object
+    if (!buffer) {
+        console.log('Failed to create the buffer object');
+        return null;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.vertexAttribPointer(a_attribute, num, type, false, 0, 0);  // Assign the buffer object to the attribute variable
+    gl.enableVertexAttribArray(a_attribute);  // Enable the assignment
+
+    //在buffer中填入type和element数量信息，以备之后绘制过程中绑定shader使用
+    buffer.num = num;
+    buffer.type = type;
+
+    return buffer;
+}
+
+/**
+ * 读入模型
+ * @param so
+ * @param gl
+ * @param scale
+ * @param reverse
+ */
+// Read a file
+function readOBJFile(so, gl, scale, reverse) {
+    var request = new XMLHttpRequest();
+
+    request.onreadystatechange = function () {
+        if (request.readyState === 4 && request.status !== 404) {
+            onReadOBJFile(request.responseText, so, gl, scale, reverse);
+        }
+    };
+    request.open('GET', so.objFilePath, true); // Create a request to acquire the file
+    request.send();                      // Send the request
+}
+
+// OBJ File has been read
+function onReadOBJFile(fileString, so, gl, scale, reverse) {
+    var objDoc = new OBJDoc(so.filePath);  // Create a OBJDoc object
+    objDoc.defaultColor = so.color;
+    var result = objDoc.parse(fileString, scale, reverse); // Parse the file
+    if (!result) {
+        so.objDoc = null;
+        so.drawingInfo = null;
+        console.log("OBJ file parsing error.");
+        return;
+    }
+    so.objDoc = objDoc;
+}
+
+function onReadComplete(gl, model, objDoc) {
+    // Acquire the vertex coordinates and colors from OBJ file
+    var drawingInfo = objDoc.getDrawingInfo();
+
+    // Write date into the buffer object
+    gl.bindBuffer(gl.ARRAY_BUFFER, model.vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, drawingInfo.vertices, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, model.normalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, drawingInfo.normals, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, model.colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, drawingInfo.colors, gl.STATIC_DRAW);
+    // console.log('drawingInfo.colors: ' + drawingInfo.colors);
+    // Write the indices to the buffer object
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, drawingInfo.indices, gl.STATIC_DRAW);
+
+    return drawingInfo;
+}
+
+/**--------------------------跟Obj模型有关的 end ---------------------------------------*/
+
+function printMessage(message) {
+    var mb = document.getElementById("messageBox");
+    mb.innerHTML = "message:\t" + message;
 }
 
 // var ANGLE_STEP = 30;   // The increments of rotation angle (degrees)

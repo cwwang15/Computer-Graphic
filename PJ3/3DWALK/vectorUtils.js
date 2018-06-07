@@ -14,6 +14,8 @@ function vectorMinus(a, b) {
     return v;
 }
 
+var zero = new Vector3([.0, .0, .0]);
+
 function vectorReverse(b) {
     var v = new Vector3();
     v.elements[0] = -b.elements[0];

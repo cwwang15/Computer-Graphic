@@ -29,29 +29,66 @@ var OBJECT_VSHADER_SOURCE =
     'attribute vec4 a_Normal;\n' +
     'uniform mat4 u_MvpMatrix;\n' +
     'uniform mat4 u_NormalMatrix;\n' +
+    // 'uniform bool u_UsingPointLight;\n' +
+    // 点光源
+    // 'uniform vec3 u_LightColor;\n' +
+    'uniform mat4 u_ModelMatrix;\n' +
+    // 'uniform vec3 u_LightPosition;\n' +
     // Ambient light color 环境光还要加上，点光源也要加上，还有颜色
-    'uniform vec3 u_AmbientLight;\n' +
+    // 'uniform vec3 u_AmbientLight;\n' +
 
-    'uniform vec3 u_DirectionLight;\n' +
+    // 'uniform vec3 u_DirectionLight;\n' +
+
+    // 逐片元着色
     'varying vec4 v_Color;\n' +
+    'varying vec3 v_Normal;\n' +
+    'varying vec3 v_Position;\n' +
     'void main() {\n' +
     '  gl_Position = u_MvpMatrix * a_Position;\n' +
-    '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
-    '  float nDotL = max(dot(normal, u_DirectionLight), 0.0);\n' +
-    '  vec3 ambient = u_AmbientLight * a_Color.rgb;\n' +
-    '  vec3 diffuse = a_Color.rgb * nDotL;\n' +
-
-    '  v_Color = vec4(ambient+diffuse , a_Color.a);\n' +
+    '  v_Position = vec3(u_ModelMatrix * a_Position);\n' +
+    // '  vec3 lightDirection = normalize(u_LightPosition - vec3(vertexPosition));\n' +
+    '  v_Normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
+    '  v_Color = a_Color;\n' +
+    // '  float nDotL = max(dot(normal, u_DirectionLight), 0.0);\n' +
+    // '  vec3 ambient = u_AmbientLight * a_Color.rgb;\n' +
+    // '  vec3 diffuse = a_Color.rgb * nDotL;\n' +
+    // '  if (u_UsingPointLight) {' +
+    // '    float cos = max(dot(lightDirection, normal), 0.0);\n' +
+    // '    vec3 diffuse2 = u_LightColor * a_Color.rgb * cos;\n' +
+    // TODO 这里有些不好的地方
+    // '    v_Color = vec4(ambient*diffuse2+diffuse, a_Color.a);\n' +
+    // '  }\n' +
+    // '  else' +
+    // '    v_Color = vec4(ambient+diffuse, a_Color.a);\n' +
     '}\n';
 
 
 var OBJECT_FSHADER_SOURCE =
 
     'precision mediump float;\n' +
+    'uniform bool u_UsingPointLight;\n' +
+    'uniform vec3 u_LightColor;\n' +
+    'uniform vec3 u_LightPosition;\n' +
+    'uniform vec3 u_AmbientLight;\n' +
+    'uniform vec3 u_DirectionLight;\n' +
+    'varying vec3 v_Normal;\n' +
+    'varying vec3 v_Position;\n' +
     //'#endif\n' +
     'varying vec4 v_Color;\n' +
     'void main() {\n' +
-    '  gl_FragColor = v_Color;\n' +
+    '  vec3 normal = normalize(v_Normal);\n' +
+    '  vec3 lightDirection = normalize(u_LightPosition - v_Position);\n' +
+    '  float cos = max(dot(lightDirection, normal), 0.0);\n' +
+
+    '  vec3 ambient = u_AmbientLight * v_Color.rgb;\n' +
+    '  float nDotL = max(dot(u_DirectionLight, normal), 0.0);\n' +
+    '  vec3 diffuseDirection = v_Color.rgb * nDotL;\n' +
+    '  if (u_UsingPointLight) {\n' +
+    '    vec3 diffusePoint = u_LightColor * v_Color.rgb * cos;\n' +
+    '    gl_FragColor = vec4(ambient + diffuseDirection + diffusePoint, v_Color.a);\n' +
+    '  }\n' +
+    '  else\n' +
+    '    gl_FragColor = vec4(ambient + diffuseDirection, v_Color.a);\n' +
     '}\n';
 
 
@@ -81,6 +118,7 @@ var sceneObjList = [];
 var dLight = sceneDirectionLight;
 var aLight = sceneAmbientLight;
 // pLight点光源与眼睛相同。
+var usingPointLight = false;
 var pLight = CameraPara.eye;
 var pLightColor = scenePointLightColor;
 var tick;
@@ -137,10 +175,19 @@ function main() {
     objProgram.u_NormalMatrix = gl.getUniformLocation(objProgram, 'u_NormalMatrix');
     objProgram.u_DirectionLight = gl.getUniformLocation(objProgram, 'u_DirectionLight');
     objProgram.u_AmbientLight = gl.getUniformLocation(objProgram, 'u_AmbientLight');
+
+    objProgram.u_UsingPointLight = gl.getUniformLocation(objProgram, 'u_UsingPointLight');
+    objProgram.u_LightColor = gl.getUniformLocation(objProgram, 'u_LightColor');
+    objProgram.u_LightPosition = gl.getUniformLocation(objProgram, 'u_LightPosition');
+    objProgram.u_ModelMatrix = gl.getUniformLocation(objProgram, 'u_ModelMatrix');
+
+    printMessage(!objProgram.u_AmbientLight);
     if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
         || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight
-        || !objProgram.u_AmbientLight) {
-        console.log('Failed to get the storage location of attribute or uniform variable');
+        || !objProgram.u_AmbientLight
+        || !objProgram.u_UsingPointLight || !objProgram.u_LightColor || !objProgram.u_LightPosition
+        || !objProgram.u_ModelMatrix) {
+        console.log('obj : Failed to get the storage location of attribute or uniform variable');
         return;
     }
     /*********************obj文件创建program 代码end ****************************/
@@ -200,7 +247,7 @@ function main() {
     /*****************************从scene文件读取配置信息 end*********************************/
     // Set the clear color and enable the depth test
     gl.enable(gl.DEPTH_TEST);
-    gl.clearColor(0.0, 0.0, .0, 1.0);
+    gl.clearColor(1.0, 0.0, .0, 1.0);
 
     // Calculate the view projection matrix
 
@@ -210,23 +257,25 @@ function main() {
         // printMessage(eye.elements[0]);
     };
     document.onkeyup = function (evt) {
-        if (evt) {
+        if (evt.keyCode !== 70) {
             nums = 0;
+
         }
+        usingPointLight = false;
     };
     // document.onkeyup = function (evt) {
     //     nums = 3;
-        // printMessage('h');
+    // printMessage('h');
     // };
     /*
      * TODO 动画与其它
      */
     // Start drawing
-    var currentAngle = 0.0; // Current rotation angle (degrees)
+    // var currentAngle = 0.0; // Current rotation angle (degrees)
 
     tick = function () {
         // currentAngle = animate(currentAngle);  // Update current rotation angle
-
+        currentAngle = animate(currentAngle);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
         drawTexture(gl, texProgram, box, boxTexture);
         drawTexture(gl, texProgram, floor, floorTexture);
@@ -253,59 +302,110 @@ function mytrick(f) {
     }
 }
 
-var last = Date.now();
 
 var deltaEye;
 var deltaAt;
-var deltaUp;
+var deltaUp = zero;
 var nums;
+// 每60帧移动MOVE_VELOCITY，据说requestAnimationFrame是每秒60帧
+var move_velocity = MOVE_VELOCITY / 60.0;
+var rot_velocity = ROT_VELOCITY / 120.0;
+var cos = Math.cos(rot_velocity);
+var sin = Math.sin(rot_velocity);
 
+/**
+ *
+ * @param evt 响应键盘事件
+ */
 function keyDownEvent(evt) {
-    var cur = Date.now();
-    var elapse = (cur - last) % 64 + 64;
-    last = cur;
-    var move = MOVE_VELOCITY * elapse / 1000;
     // printMessage(move);
-    if (evt.keyCode === 65) {//a
-        var v = vectorCross(up, vectorMinus(at, eye));
-        deltaEye = vectorMultNum(v, 0.125);
-        deltaAt = new Vector3(deltaEye.elements);
-        deltaUp = new Vector3([0.0,0.0,0.0]);
-        nums = Math.round(move* 1000);
+    if (evt.keyCode === 70) {
+        usingPointLight = true;
 
-        // for (var i = 0; i < move; i++) {
-        //     eye = vectorAdd(eye, v);
-        //     at = vectorAdd(at, v);
-        //     tick();
-        // }
+    } else {
+        // deltaUp = zero;
+        deltaEye = zero;
+        deltaAt = zero;
 
+        var face = vectorMinus(at, eye).normalize();
+        var v = vectorCross(up, face).normalize();
+        // var axis = vectorCross(v, face).normalize();
+        if (evt.keyCode === 65) {//a
+            deltaEye = vectorAdd(deltaEye, vectorMultNum(v, move_velocity));
+            deltaAt = vectorAdd(deltaAt, deltaEye);
+        }
+        if (evt.keyCode === 83) { //s
+            var tmp_face = vectorReverse(face);
+            deltaEye = vectorAdd(deltaEye, vectorMultNum(tmp_face, move_velocity));
+            deltaAt = vectorAdd(deltaAt, deltaEye);
+
+        }
+        if (evt.keyCode === 68) { //d
+            var temp_v = vectorReverse(v);
+            deltaEye = vectorAdd(deltaEye, vectorMultNum(temp_v, move_velocity));
+            deltaAt = vectorAdd(deltaAt, deltaEye);
+        }
+        if (evt.keyCode === 87) { //w
+            deltaEye = vectorAdd(deltaEye, vectorMultNum(face, move_velocity));
+            deltaAt = vectorAdd(deltaAt, deltaEye);
+        }
+
+        /***********        旋转           ********************/
+        /**
+         * 说明：
+         * 旋转这里做的可能不是太好，我的计算方式是
+         * 1，计算look-at-point的delta（偏移）
+         * 2，根据改变后的look-at-point位置（偏移后的），计算新的up-vector
+         *    使新的up-vector与之正交。
+         *    更新up-vector在函数 {@code deltaViewProjMatrix} 中
+         */
+        var left;
+        var new_pos;
+        if (evt.keyCode === 74) { //j
+            left = vectorCopy(v);
+            new_pos = vectorAdd(vectorMultNum(face, cos), vectorMultNum(left, sin));
+            deltaAt = vectorMinus(new_pos, face);
+        }
+        if (evt.keyCode === 76) { // l
+            left = vectorReverse(v);
+            new_pos = vectorAdd(vectorMultNum(face, cos), vectorMultNum(left, sin));
+            deltaAt = vectorMinus(new_pos, face);
+        }
+        if (evt.keyCode === 73) { // i 向上旋转
+            new_pos = vectorAdd(vectorMultNum(face, cos), vectorMultNum(up, sin));
+            deltaAt = vectorMinus(new_pos, face);
+
+        }
+        if (evt.keyCode === 75) { //k
+            new_pos = vectorAdd(vectorMultNum(face, cos), vectorMultNum(up, -sin));
+            deltaAt = vectorMinus(new_pos, face);
+        }
+        /********************      旋转结束          **************************************/
+        nums = 10000;
     }
-    else if (evt.keyCode === 83) { //s
-
-    } else if (evt.keyCode === 68) { //d
-        var v = vectorCross(up, vectorMinus(at, eye));
-        v = vectorReverse(v);
-        deltaEye = vectorMultNum(v, 0.125);
-        deltaAt = new Vector3(deltaEye.elements);
-        deltaUp = new Vector3([0.0,0.0,0.0]);
-        nums = Math.round(move*1000);
-    } else if (evt.keyCode === 87) { //w
-
-    }
-    // printMessage(deltaEye.elements + " nums: " + nums);
-    // changeViewProjMatrix();
 }
 
+/**
+ *
+ * @param deltaEye 眼睛位置的偏移量
+ * @param deltaAt  look-at-point的偏移量
+ * @param deltaUp  这个没用，根据deltaEye和deltaAt计算。
+ */
 function deltaViewProjMatrix(deltaEye, deltaAt, deltaUp) {
     if (nums > 0) {
         nums--;
+        var face = vectorMinus(at, eye);
+        var left = vectorCross(face, up);
+
         eye = vectorAdd(eye, deltaEye);
         at = vectorAdd(at, deltaAt);
-        up = vectorAdd(up, deltaUp);
-        printMessage(eye.elements + '; at: ' + at.elements + "; nums: " + nums);
+        face = vectorMinus(at, eye);
+        up = vectorCross(left, face);
+        up.normalize();
         changeViewProjMatrix();
     }
 }
+
 function changeViewProjMatrix() {
     /*
      * view 与 project 放一起了
@@ -318,8 +418,8 @@ function changeViewProjMatrix() {
     pLight = eye.elements;
 }
 
-/**------------------------跟纹理有关的   start------------------------------------------*/
-/**
+/**##########################跟纹理有关的   start##################################/
+ /**
  *
  * @param gl
  * @param target 要返回哪一个物体的顶点信息
@@ -492,10 +592,10 @@ function initElementArrayBufferForLaterUse(gl, data, type) {
     return buffer;
 }
 
-/**--------------------------跟纹理有关的 end ---------------------------------------*/
+/**##############################跟纹理有关的 end ###################################*/
 
 
-/**--------------------------跟Obj模型有关的 start ---------------------------------------*/
+/**^^^^^^^^^^^^^^^^^^^^^^^^^^跟Obj模型有关的 start ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 function renderScene(gl) {
     // TODO
     gl.useProgram(objProgram);
@@ -504,7 +604,10 @@ function renderScene(gl) {
     var mvpMatrix = new Matrix4();
     gl.uniform3f(objProgram.u_DirectionLight, dLight[0], dLight[1], dLight[2]);
     gl.uniform3f(objProgram.u_AmbientLight, aLight[0], aLight[1], aLight[2]);
-
+    gl.uniform1i(objProgram.u_UsingPointLight, usingPointLight);
+    gl.uniform3f(objProgram.u_LightColor, pLightColor[0], pLight[1], pLightColor[2]);
+    // console.log(pLightColor);
+    gl.uniform3f(objProgram.u_LightPosition, eye.elements[0], eye.elements[1], eye.elements[2]);
     for (var i = 0, num = sceneObjList.length; i < num; i++) {
         var so = sceneObjList[i];
         if (so.objDoc != null && so.objDoc.isMTLComplete()) { // OBJ and all MTLs are available
@@ -512,10 +615,12 @@ function renderScene(gl) {
             sceneObjList[i].objname = so.objDoc.objects[0].name;
             so.objname = so.objDoc.objects[0].name;
             so.objDoc = null;
+            // console.log(so.objname === 'bird');
         }
         if (so.drawingInfo) {
             modelMatrix.setIdentity();
-            manipulateObj(so.transform, modelMatrix);
+            manipulateObj(so.transform, modelMatrix, so.objname);
+            gl.uniformMatrix4fv(objProgram.u_ModelMatrix, false, modelMatrix.elements);
 
             mvpMatrix.set(viewProjMatrix).multiply(modelMatrix);
             gl.uniformMatrix4fv(objProgram.u_MvpMatrix, false, mvpMatrix.elements);
@@ -540,18 +645,31 @@ function renderScene(gl) {
  * 对obj进行转换
  * @param op          一个数组，记录要执行什么操作
  * @param modelMatrix 被操作的矩阵
+ * @param name
  */
-function manipulateObj(op, modelMatrix) {
+var test = 0;
+
+function manipulateObj(op, modelMatrix, name) {
     for (var i = 0; i < op.length; i++) {
         // var so = sceneObjList[0];
-
-        // printMessage(op[i].type);
+        if (name === 'bird') {
+            modelMatrix.rotate(currentAngle, 0, 1, 0);
+            if (op[i].type === 'translate') {
+                // 来两次三角函数升降
+                op[i].content[1] = 3 * Math.sin((currentAngle + 160) * Math.PI / 90) + 3;
+            }
+        }
         if (op[i].type === 'rotate') {
             modelMatrix.rotate(op[i].content[0], op[i].content[1], op[i].content[2], op[i].content[3]);
         } else if (op[i].type === 'translate') {
             modelMatrix.translate(op[i].content[0], op[i].content[1], op[i].content[2]);
         } else if (op[i].type === 'scale') {
             modelMatrix.scale(op[i].content[0], op[i].content[1], op[i].content[2]);
+        }
+        if (name === 'bird') {
+            // modelMatrix.rotate(300, 0, 1, 0);
+            // WARNING: 如果不这样做，鸟会自旋
+            modelMatrix.rotate(-currentAngle / 2 + 300, 0, 1, 0);
         }
     }
 }
@@ -644,21 +762,21 @@ function onReadComplete(gl, model, objDoc) {
     return drawingInfo;
 }
 
-/**--------------------------跟Obj模型有关的 end ---------------------------------------*/
+/**^^^^^^^^^^^^^^^^^^^^^^^^^^跟Obj模型有关的 end ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
 function printMessage(message) {
     var mb = document.getElementById("messageBox");
     mb.innerHTML = "message:\t" + message;
 }
 
-// var ANGLE_STEP = 30;   // The increments of rotation angle (degrees)
-
-// var last = Date.now(); // Last time that this function was called
-// function animate(angle) {
-//   var now = Date.now();   // Calculate the elapsed time
-//   var elapsed = now - last;
-//   last = now;
-//   // Update the current rotation angle (adjusted by the elapsed time)
-//   var newAngle = angle + (ANGLE_STEP * elapsed) / 1000.0;
-//   return newAngle % 360;
-// }
+var ANGLE_STEP = 90;   // The increments of rotation angle (degrees)
+var currentAngle = 0;
+var last = Date.now(); // Last time that this function was called
+function animate(angle) {
+    var now = Date.now();   // Calculate the elapsed time
+    var elapsed = now - last;
+    last = now;
+    // Update the current rotation angle (adjusted by the elapsed time)
+    var newAngle = angle + (ANGLE_STEP * elapsed) / 1000.0;
+    return newAngle % 360;
+}

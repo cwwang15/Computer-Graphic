@@ -8,6 +8,8 @@ var TEXTURE_VSHADER_SOURCE =
     'attribute vec2 a_TexCoord;\n' +
     'uniform mat4 u_MvpMatrix;\n' +
     'varying vec2 v_TexCoord;\n' +
+    'uniform mat4 u_ModelMatrix;\n' +
+
     'void main() {\n' +
     '  gl_Position = u_MvpMatrix * a_Position;\n' +
     '  v_TexCoord = a_TexCoord;\n' +
@@ -20,7 +22,25 @@ var TEXTURE_FSHADER_SOURCE =
     'varying vec2 v_TexCoord;\n' +
     // 'varying float v_NdotL;\n' +
     'void main() {\n' +
+
     '  gl_FragColor = texture2D(u_Sampler, v_TexCoord);\n' +
+    '}\n';
+
+// 影子
+var SHADOW_VSHADER_SOURCE =
+    'attribute vec4 a_Position;\n' +
+    'uniform mat4 u_MvpMatrix;\n' +
+    'void main() {\n' +
+    '  gl_Position = u_MvpMatrix * a_Position;\n' +
+    '}\n';
+
+// Fragment shader program for generating a shadow map
+var SHADOW_FSHADER_SOURCE =
+    '#ifdef GL_ES\n' +
+    'precision mediump float;\n' +
+    '#endif\n' +
+    'void main() {\n' +
+    '  gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);\n' + // Write the z-value in R
     '}\n';
 
 var OBJECT_VSHADER_SOURCE =
@@ -43,12 +63,22 @@ var OBJECT_VSHADER_SOURCE =
     'varying vec4 v_Color;\n' +
     'varying vec3 v_Normal;\n' +
     'varying vec3 v_Position;\n' +
+    // 雾化效果
+    'uniform vec4 u_Eye;\n' +
+    'varying float v_Dist;\n' +
+    // 影子
+    'uniform mat4 u_MvpMatrixFromLight;\n' +
+    'varying vec4 v_PositionFromLight;\n' +
+    '' +
     'void main() {\n' +
     '  gl_Position = u_MvpMatrix * a_Position;\n' +
     '  v_Position = vec3(u_ModelMatrix * a_Position);\n' +
+    // 影子
+    '  v_PositionFromLight = u_MvpMatrixFromLight * a_Position;\n' +
     // '  vec3 lightDirection = normalize(u_LightPosition - vec3(vertexPosition));\n' +
     '  v_Normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
     '  v_Color = a_Color;\n' +
+    '  v_Dist = gl_Position.w;\n' +
     // '  float nDotL = max(dot(normal, u_DirectionLight), 0.0);\n' +
     // '  vec3 ambient = u_AmbientLight * a_Color.rgb;\n' +
     // '  vec3 diffuse = a_Color.rgb * nDotL;\n' +
@@ -75,20 +105,40 @@ var OBJECT_FSHADER_SOURCE =
     'varying vec3 v_Position;\n' +
     //'#endif\n' +
     'varying vec4 v_Color;\n' +
+    // 雾
+    'uniform vec3 u_FogColor;\n' +
+    'uniform vec2 u_FogDist;\n' +
+    'varying float v_Dist;\n' +
+    // 影子
+    'uniform sampler2D u_ShadowMap;\n' +
+    'varying vec4 v_PositionFromLight;\n' +
     'void main() {\n' +
     '  vec3 normal = normalize(v_Normal);\n' +
     '  vec3 lightDirection = normalize(u_LightPosition - v_Position);\n' +
     '  float cos = max(dot(lightDirection, normal), 0.0);\n' +
+    '  float fogFactor = clamp((u_FogDist.y - v_Dist) / (u_FogDist.y - u_FogDist.x), 0.0, 1.0);\n' +
+    '  vec3 color = mix(u_FogColor, vec3(v_Color), fogFactor);\n' +
 
     '  vec3 ambient = u_AmbientLight * v_Color.rgb;\n' +
     '  float nDotL = max(dot(u_DirectionLight, normal), 0.0);\n' +
     '  vec3 diffuseDirection = v_Color.rgb * nDotL;\n' +
+    '  float visibility = 1.0;\n' +
+    // 影子
+    // '  vec3 shadowCoord = vec3(v_PositionFromLight);\n'+
+
+    // 点光源
     '  if (u_UsingPointLight) {\n' +
+    '    vec3 shadowCoord = (v_PositionFromLight.xyz / v_PositionFromLight.w) / 2.0 + 0.5;\n' +
+    '    vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);\n' +
+    '    float depth = rgbaDepth.r;\n' + // Retrieve the z-value from R
+    '    visibility = (shadowCoord.z > depth + 0.005) ? 0.7 : 1.0;\n' +
+
     '    vec3 diffusePoint = u_LightColor * v_Color.rgb * cos;\n' +
-    '    gl_FragColor = vec4(ambient + diffuseDirection + diffusePoint, v_Color.a);\n' +
+    '    gl_FragColor = vec4((ambient + color + mix(diffuseDirection,diffusePoint, 0.5))*visibility , v_Color.a);\n' +
     '  }\n' +
     '  else\n' +
-    '    gl_FragColor = vec4(ambient + diffuseDirection, v_Color.a);\n' +
+    '    gl_FragColor = vec4(mix(ambient + diffuseDirection, color, 0.9), v_Color.a);\n' +
+    // '  gl_FragColor = vec4(color, v_Color.a);\n'+
     '}\n';
 
 
@@ -100,11 +150,22 @@ var eye = new Vector3(CameraPara.eye);
 var at = new Vector3(CameraPara.at);
 var up = new Vector3(CameraPara.up);
 
+var fogColor = new Float32Array([0.137, .231, .423]);
+var fogDist = new Float32Array([0, 30]);
+
 
 var viewProjMatrix = new Matrix4();
+var viewProjMatrixFromLight = new Matrix4();
+var OFFSCREEN_WIDTH = 2048, OFFSCREEN_HEIGHT = 2048;
+var aspectFromLight = OFFSCREEN_WIDTH / OFFSCREEN_HEIGHT;
+var fovFromLight = 80;
 
 var objProgram;
 var texProgram;
+var shadowProgram;
+
+//帧缓冲
+var fbo;
 
 var SceneObject = function () {
     this.model;  	 //a model contains some vertex buffer
@@ -162,6 +223,18 @@ function main() {
 
     /*********************obj文件创建program 代码start ****************************/
 
+    shadowProgram = createProgram(gl, SHADOW_VSHADER_SOURCE, SHADOW_FSHADER_SOURCE);
+    if (!shadowProgram) {
+        console.log('Faild to create shadow program');
+        return;
+    }
+    shadowProgram.a_Position = gl.getAttribLocation(shadowProgram, 'a_Position');
+    shadowProgram.u_MvpMatrix = gl.getUniformLocation(shadowProgram, 'u_MvpMatrix');
+    if (shadowProgram.a_Position < 0 || !shadowProgram.u_MvpMatrix) {
+        console.log('Failed to get the storage location of attribute or uniform variable from shadowProgram');
+        return;
+    }
+
     objProgram = createProgram(gl, OBJECT_VSHADER_SOURCE, OBJECT_FSHADER_SOURCE);
 
     if (!objProgram) {
@@ -176,22 +249,37 @@ function main() {
     objProgram.u_DirectionLight = gl.getUniformLocation(objProgram, 'u_DirectionLight');
     objProgram.u_AmbientLight = gl.getUniformLocation(objProgram, 'u_AmbientLight');
 
+    // 点光源
     objProgram.u_UsingPointLight = gl.getUniformLocation(objProgram, 'u_UsingPointLight');
     objProgram.u_LightColor = gl.getUniformLocation(objProgram, 'u_LightColor');
     objProgram.u_LightPosition = gl.getUniformLocation(objProgram, 'u_LightPosition');
     objProgram.u_ModelMatrix = gl.getUniformLocation(objProgram, 'u_ModelMatrix');
-
-    printMessage(!objProgram.u_AmbientLight);
+    // 雾
+    objProgram.u_Eye = gl.getUniformLocation(objProgram, 'u_Eye');
+    objProgram.u_FogColor = gl.getUniformLocation(objProgram, 'u_FogColor');
+    objProgram.u_FogDist = gl.getUniformLocation(objProgram, 'u_FogDist');
+    // 影子
+    objProgram.u_MvpMatrixFromLight = gl.getUniformLocation(objProgram, 'u_MvpMatrixFromLight');
+    objProgram.u_ShadowMap = gl.getUniformLocation(objProgram, 'u_ShadowMap');
+    // printMessage(!objProgram.u_AmbientLight);
     if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
         || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight
         || !objProgram.u_AmbientLight
         || !objProgram.u_UsingPointLight || !objProgram.u_LightColor || !objProgram.u_LightPosition
-        || !objProgram.u_ModelMatrix) {
+        || !objProgram.u_ModelMatrix
+        || !objProgram.u_ShadowMap || !objProgram.u_MvpMatrixFromLight) {
         console.log('obj : Failed to get the storage location of attribute or uniform variable');
         return;
     }
     /*********************obj文件创建program 代码end ****************************/
 
+    fbo = initFramebufferObject(gl);
+    if (!fbo) {
+        console.log('Failed to initialize frame buffer object');
+        return;
+    }
+    gl.activeTexture(gl.TEXTURE2); // Set a texture object to the texture unit
+    gl.bindTexture(gl.TEXTURE_2D, fbo.texture);
 
 
     var box = initVertexBuffers4TexEntity(gl, boxRes);
@@ -247,7 +335,7 @@ function main() {
     /*****************************从scene文件读取配置信息 end*********************************/
     // Set the clear color and enable the depth test
     gl.enable(gl.DEPTH_TEST);
-    gl.clearColor(1.0, 0.0, .0, 1.0);
+    gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1.0);
 
     // Calculate the view projection matrix
 
@@ -277,8 +365,11 @@ function main() {
         // currentAngle = animate(currentAngle);  // Update current rotation angle
         currentAngle = animate(currentAngle);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-        drawTexture(gl, texProgram, box, boxTexture);
-        drawTexture(gl, texProgram, floor, floorTexture);
+        if (usingPointLight) {
+            drawTexture(gl, texProgram, box, boxTexture);
+            drawTexture(gl, texProgram, floor, floorTexture);
+        }
+
         deltaViewProjMatrix(deltaEye, deltaAt, deltaUp);
         renderScene(gl);
         // last = Date.now();
@@ -319,9 +410,12 @@ var sin = Math.sin(rot_velocity);
  */
 function keyDownEvent(evt) {
     // printMessage(move);
-    if (evt.keyCode === 70) {
+    if (evt.keyCode === 38) {
+        fogDist[1] += 1;
+    } else if (evt.keyCode === 40) {
+        fogDist[1] -= 1;
+    } else if (evt.keyCode === 70) {
         usingPointLight = true;
-
     } else {
         // deltaUp = zero;
         deltaEye = zero;
@@ -414,7 +508,10 @@ function changeViewProjMatrix() {
     viewProjMatrix.lookAt(eye.elements[0], eye.elements[1], eye.elements[2],
         at.elements[0], at.elements[1], at.elements[2],
         up.elements[0], up.elements[1], up.elements[2]);
-
+    viewProjMatrixFromLight.setPerspective(fovFromLight, aspectFromLight, near, far);
+    viewProjMatrixFromLight.lookAt(eye.elements[0], eye.elements[1], eye.elements[2],
+        at.elements[0], at.elements[1], at.elements[2],
+        up.elements[0], up.elements[1], up.elements[2]);
     pLight = eye.elements;
 }
 
@@ -430,6 +527,7 @@ function initVertexBuffers4TexEntity(gl, target) {
     var vertices = new Float32Array(target.vertex);
     var texCoords = new Float32Array(target.texCoord);
     var indices = new Uint8Array(target.index);
+    // var normals = new Float32Array()
     var texObj = {}; // Utilize Object to to return multiple buffer objects together
 
     // Write vertex information to buffer object
@@ -437,12 +535,14 @@ function initVertexBuffers4TexEntity(gl, target) {
     // o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
     texObj.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
     texObj.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
+    // texObj.normals = initArrayBufferForLaterUse(gl, )
     if (!texObj.vertexBuffer || !texObj.texCoordBuffer || !texObj.indexBuffer) return null;
 
     texObj.numIndices = indices.length;
     texObj.texImagePath = target.texImagePath;
     texObj.scale = target.scale;
     texObj.translate = target.translate;
+    // texObj.normals = target.normals;
     // Unbind the buffer object
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
@@ -537,6 +637,7 @@ function drawTexture(gl, program, texEntity, texture) {
     initAttributeVariable(gl, program.a_Position, texEntity.vertexBuffer);  // Vertex coordinates
     // initAttributeVariable(gl, program.a_Normal, o.normalBuffer);    // Normal
     initAttributeVariable(gl, program.a_TexCoord, texEntity.texCoordBuffer);// Texture coordinates
+    // initAttributeVariable(gl, program.a_Normal, texEntity.normals);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, texEntity.indexBuffer); // Bind indices
 
     // Bind texture object to texture unit 0
@@ -597,18 +698,26 @@ function initElementArrayBufferForLaterUse(gl, data, type) {
 
 /**^^^^^^^^^^^^^^^^^^^^^^^^^^跟Obj模型有关的 start ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 function renderScene(gl) {
-    // TODO
+
     gl.useProgram(objProgram);
     var modelMatrix = new Matrix4();
     var normalMatrix = new Matrix4();
     var mvpMatrix = new Matrix4();
+    var mvpMatrixFromLight = new Matrix4();
+    // var mvpMatrixFromLight_p = new Matrix4();
     gl.uniform3f(objProgram.u_DirectionLight, dLight[0], dLight[1], dLight[2]);
     gl.uniform3f(objProgram.u_AmbientLight, aLight[0], aLight[1], aLight[2]);
     gl.uniform1i(objProgram.u_UsingPointLight, usingPointLight);
     gl.uniform3f(objProgram.u_LightColor, pLightColor[0], pLight[1], pLightColor[2]);
+    gl.uniform3fv(objProgram.u_FogColor, fogColor);
+    gl.uniform2fv(objProgram.u_FogDist, fogDist);
+    gl.uniform4fv(objProgram.u_Eye, new Float32Array(eye.elements));
     // console.log(pLightColor);
     gl.uniform3f(objProgram.u_LightPosition, eye.elements[0], eye.elements[1], eye.elements[2]);
     for (var i = 0, num = sceneObjList.length; i < num; i++) {
+
+        // gl.uniform1i(objProgram.u_ShadowMap, 2);
+
         var so = sceneObjList[i];
         if (so.objDoc != null && so.objDoc.isMTLComplete()) { // OBJ and all MTLs are available
             so.drawingInfo = onReadComplete(gl, so.model, so.objDoc);
@@ -629,15 +738,16 @@ function renderScene(gl) {
             normalMatrix.transpose();
             gl.uniformMatrix4fv(objProgram.u_NormalMatrix, false, normalMatrix.elements);
 
-            initAttributeVariable(gl, objProgram.a_Position, so.model.vertexBuffer);  // Vertex coordinates
-            initAttributeVariable(gl, objProgram.a_Normal, so.model.normalBuffer);    // Normal
-            initAttributeVariable(gl, objProgram.a_Color, so.model.colorBuffer);// Texture coordinates
+            initAttributeVariable(gl, objProgram.a_Position, so.model.vertexBuffer);
+            initAttributeVariable(gl, objProgram.a_Normal, so.model.normalBuffer);
+            initAttributeVariable(gl, objProgram.a_Color, so.model.colorBuffer);//
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, so.model.indexBuffer);
             // Draw
             gl.drawElements(gl.TRIANGLES, so.drawingInfo.indices.length, gl.UNSIGNED_SHORT, 0);
         }
     }
+
 
 }
 
@@ -656,7 +766,7 @@ function manipulateObj(op, modelMatrix, name) {
             modelMatrix.rotate(currentAngle, 0, 1, 0);
             if (op[i].type === 'translate') {
                 // 来两次三角函数升降
-                op[i].content[1] = 3 * Math.sin((currentAngle + 160) * Math.PI / 90) + 3;
+                op[i].content[1] = 3 * Math.sin((currentAngle + 160) * Math.PI / 90) + 6;
             }
         }
         if (op[i].type === 'rotate') {
@@ -760,6 +870,65 @@ function onReadComplete(gl, model, objDoc) {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, drawingInfo.indices, gl.STATIC_DRAW);
 
     return drawingInfo;
+}
+
+function initFramebufferObject(gl) {
+    var framebuffer, texture, depthBuffer;
+
+    // Define the error handling function
+    var error = function () {
+        if (framebuffer) gl.deleteFramebuffer(framebuffer);
+        if (texture) gl.deleteTexture(texture);
+        if (depthBuffer) gl.deleteRenderbuffer(depthBuffer);
+        return null;
+    };
+
+    // Create a framebuffer object (FBO)
+    framebuffer = gl.createFramebuffer();
+    if (!framebuffer) {
+        console.log('Failed to create frame buffer object');
+        return error();
+    }
+
+    // Create a texture object and set its size and parameters
+    texture = gl.createTexture(); // Create a texture object
+    if (!texture) {
+        console.log('Failed to create texture object');
+        return error();
+    }
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+    // Create a renderbuffer object and Set its size and parameters
+    depthBuffer = gl.createRenderbuffer(); // Create a renderbuffer object
+    if (!depthBuffer) {
+        console.log('Failed to create renderbuffer object');
+        return error();
+    }
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT);
+
+    // Attach the texture and the renderbuffer object to the FBO
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+
+    // Check if FBO is configured correctly
+    var e = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (gl.FRAMEBUFFER_COMPLETE !== e) {
+        console.log('Frame buffer object is incomplete: ' + e.toString());
+        return error();
+    }
+
+    framebuffer.texture = texture; // keep the required object
+
+    // Unbind the buffer object
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+
+    return framebuffer;
 }
 
 /**^^^^^^^^^^^^^^^^^^^^^^^^^^跟Obj模型有关的 end ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/

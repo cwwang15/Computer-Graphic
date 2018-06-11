@@ -2,29 +2,6 @@ window.addEventListener("load", main, false);
 // ProgramObject.js (c) 2012 matsuda and kanda
 // Vertex shader for single color drawing
 
-// Vertex shader for texture drawing
-var TEXTURE_VSHADER_SOURCE =
-    'attribute vec4 a_Position;\n' +
-    'attribute vec2 a_TexCoord;\n' +
-    'uniform mat4 u_MvpMatrix;\n' +
-    'varying vec2 v_TexCoord;\n' +
-    'uniform mat4 u_ModelMatrix;\n' +
-
-    'void main() {\n' +
-    '  gl_Position = u_MvpMatrix * a_Position;\n' +
-    '  v_TexCoord = a_TexCoord;\n' +
-    '}\n';
-
-// Fragment shader for texture drawing
-var TEXTURE_FSHADER_SOURCE =
-    'precision mediump float;\n' +
-    'uniform sampler2D u_Sampler;\n' +
-    'varying vec2 v_TexCoord;\n' +
-    // 'varying float v_NdotL;\n' +
-    'void main() {\n' +
-
-    '  gl_FragColor = texture2D(u_Sampler, v_TexCoord);\n' +
-    '}\n';
 
 // 影子
 var SHADOW_VSHADER_SOURCE =
@@ -43,104 +20,6 @@ var SHADOW_FSHADER_SOURCE =
     '  gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);\n' + // Write the z-value in R
     '}\n';
 
-var OBJECT_VSHADER_SOURCE =
-    'attribute vec4 a_Position;\n' +
-    'attribute vec4 a_Color;\n' +
-    'attribute vec4 a_Normal;\n' +
-    'uniform mat4 u_MvpMatrix;\n' +
-    'uniform mat4 u_NormalMatrix;\n' +
-    // 'uniform bool u_UsingPointLight;\n' +
-    // 点光源
-    // 'uniform vec3 u_LightColor;\n' +
-    'uniform mat4 u_ModelMatrix;\n' +
-    // 'uniform vec3 u_LightPosition;\n' +
-    // Ambient light color 环境光还要加上，点光源也要加上，还有颜色
-    // 'uniform vec3 u_AmbientLight;\n' +
-
-    // 'uniform vec3 u_DirectionLight;\n' +
-
-    // 逐片元着色
-    'varying vec4 v_Color;\n' +
-    'varying vec3 v_Normal;\n' +
-    'varying vec3 v_Position;\n' +
-    // 雾化效果
-    'uniform vec4 u_Eye;\n' +
-    'varying float v_Dist;\n' +
-    // 影子
-    'uniform mat4 u_MvpMatrixFromLight;\n' +
-    'varying vec4 v_PositionFromLight;\n' +
-    '' +
-    'void main() {\n' +
-    '  gl_Position = u_MvpMatrix * a_Position;\n' +
-    '  v_Position = vec3(u_ModelMatrix * a_Position);\n' +
-    // 影子
-    '  v_PositionFromLight = u_MvpMatrixFromLight * a_Position;\n' +
-    // '  vec3 lightDirection = normalize(u_LightPosition - vec3(vertexPosition));\n' +
-    '  v_Normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
-    '  v_Color = a_Color;\n' +
-    '  v_Dist = gl_Position.w;\n' +
-    // '  float nDotL = max(dot(normal, u_DirectionLight), 0.0);\n' +
-    // '  vec3 ambient = u_AmbientLight * a_Color.rgb;\n' +
-    // '  vec3 diffuse = a_Color.rgb * nDotL;\n' +
-    // '  if (u_UsingPointLight) {' +
-    // '    float cos = max(dot(lightDirection, normal), 0.0);\n' +
-    // '    vec3 diffuse2 = u_LightColor * a_Color.rgb * cos;\n' +
-    // TODO 这里有些不好的地方
-    // '    v_Color = vec4(ambient*diffuse2+diffuse, a_Color.a);\n' +
-    // '  }\n' +
-    // '  else' +
-    // '    v_Color = vec4(ambient+diffuse, a_Color.a);\n' +
-    '}\n';
-
-
-var OBJECT_FSHADER_SOURCE =
-
-    'precision mediump float;\n' +
-    'uniform bool u_UsingPointLight;\n' +
-    'uniform vec3 u_LightColor;\n' +
-    'uniform vec3 u_LightPosition;\n' +
-    'uniform vec3 u_AmbientLight;\n' +
-    'uniform vec3 u_DirectionLight;\n' +
-    'varying vec3 v_Normal;\n' +
-    'varying vec3 v_Position;\n' +
-    //'#endif\n' +
-    'varying vec4 v_Color;\n' +
-    // 雾
-    'uniform vec3 u_FogColor;\n' +
-    'uniform vec2 u_FogDist;\n' +
-    'varying float v_Dist;\n' +
-    // 影子
-    'uniform sampler2D u_ShadowMap;\n' +
-    'varying vec4 v_PositionFromLight;\n' +
-    'void main() {\n' +
-    '  vec3 normal = normalize(v_Normal);\n' +
-    '  vec3 lightDirection = normalize(u_LightPosition - v_Position);\n' +
-    '  float cos = max(dot(lightDirection, normal), 0.0);\n' +
-    '  float fogFactor = clamp((u_FogDist.y - v_Dist) / (u_FogDist.y - u_FogDist.x), 0.0, 1.0);\n' +
-    '  vec3 color = mix(u_FogColor, vec3(v_Color), fogFactor);\n' +
-
-    '  vec3 ambient = u_AmbientLight * v_Color.rgb;\n' +
-    '  float nDotL = max(dot(u_DirectionLight, normal), 0.0);\n' +
-    '  vec3 diffuseDirection = v_Color.rgb * nDotL;\n' +
-    '  float visibility = 1.0;\n' +
-    // 影子
-    // '  vec3 shadowCoord = vec3(v_PositionFromLight);\n'+
-
-    // 点光源
-    '  if (u_UsingPointLight) {\n' +
-    '    vec3 shadowCoord = (v_PositionFromLight.xyz / v_PositionFromLight.w) / 2.0 + 0.5;\n' +
-    '    vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);\n' +
-    '    float depth = rgbaDepth.r;\n' + // Retrieve the z-value from R
-    '    visibility = (shadowCoord.z > depth + 0.005) ? 0.7 : 1.0;\n' +
-
-    '    vec3 diffusePoint = u_LightColor * v_Color.rgb * cos;\n' +
-    '    gl_FragColor = vec4((ambient + color + mix(diffuseDirection,diffusePoint, 0.5))*visibility , v_Color.a);\n' +
-    '  }\n' +
-    '  else\n' +
-    '    gl_FragColor = vec4(mix(ambient + diffuseDirection, color, 0.9), v_Color.a);\n' +
-    // '  gl_FragColor = vec4(color, v_Color.a);\n'+
-    '}\n';
-
 
 var fov;
 var near;
@@ -150,8 +29,8 @@ var eye = new Vector3(CameraPara.eye);
 var at = new Vector3(CameraPara.at);
 var up = new Vector3(CameraPara.up);
 
-var fogColor = new Float32Array([0.137, .231, .423]);
-var fogDist = new Float32Array([0, 30]);
+var fogColor = new Float32Array([0.937, .931, 1.0]);
+var fogDist = new Float32Array([0, 1]);
 
 
 var viewProjMatrix = new Matrix4();
@@ -195,31 +74,16 @@ function main() {
         console.log('Failed to get the rendering context for WebGL');
         return;
     }
-    init();
+    init(canvas);
 
-    function init() {
-        fov = CameraPara.fov;
-        near = CameraPara.near;
-        far = CameraPara.far;
-        aspect = canvas.width / canvas.height;
-
-        changeViewProjMatrix();
-    }
 
     // Initialize shaders
     texProgram = createProgram(gl, TEXTURE_VSHADER_SOURCE, TEXTURE_FSHADER_SOURCE);
-
-    texProgram.a_Position = gl.getAttribLocation(texProgram, 'a_Position');
-    texProgram.a_TexCoord = gl.getAttribLocation(texProgram, 'a_TexCoord');
-    texProgram.u_MvpMatrix = gl.getUniformLocation(texProgram, 'u_MvpMatrix');
-    texProgram.u_Sampler = gl.getUniformLocation(texProgram, 'u_Sampler');
-
-    if (texProgram.a_Position < 0 || texProgram.a_TexCoord < 0 ||
-        !texProgram.u_MvpMatrix || !texProgram.u_Sampler) {
-        console.log('Failed to get the storage location of attribute or uniform variable');
+    if (!texProgram) {
+        console.log('falied to create texture program');
         return;
     }
-
+    initTexProgram(gl);
 
     /*********************obj文件创建program 代码start ****************************/
 
@@ -241,36 +105,7 @@ function main() {
         console.log('Failed to create obj program');
         return;
     }
-    objProgram.a_Position = gl.getAttribLocation(objProgram, 'a_Position');
-    objProgram.a_Color = gl.getAttribLocation(objProgram, 'a_Color');
-    objProgram.a_Normal = gl.getAttribLocation(objProgram, 'a_Normal');
-    objProgram.u_MvpMatrix = gl.getUniformLocation(objProgram, 'u_MvpMatrix');
-    objProgram.u_NormalMatrix = gl.getUniformLocation(objProgram, 'u_NormalMatrix');
-    objProgram.u_DirectionLight = gl.getUniformLocation(objProgram, 'u_DirectionLight');
-    objProgram.u_AmbientLight = gl.getUniformLocation(objProgram, 'u_AmbientLight');
-
-    // 点光源
-    objProgram.u_UsingPointLight = gl.getUniformLocation(objProgram, 'u_UsingPointLight');
-    objProgram.u_LightColor = gl.getUniformLocation(objProgram, 'u_LightColor');
-    objProgram.u_LightPosition = gl.getUniformLocation(objProgram, 'u_LightPosition');
-    objProgram.u_ModelMatrix = gl.getUniformLocation(objProgram, 'u_ModelMatrix');
-    // 雾
-    objProgram.u_Eye = gl.getUniformLocation(objProgram, 'u_Eye');
-    objProgram.u_FogColor = gl.getUniformLocation(objProgram, 'u_FogColor');
-    objProgram.u_FogDist = gl.getUniformLocation(objProgram, 'u_FogDist');
-    // 影子
-    objProgram.u_MvpMatrixFromLight = gl.getUniformLocation(objProgram, 'u_MvpMatrixFromLight');
-    objProgram.u_ShadowMap = gl.getUniformLocation(objProgram, 'u_ShadowMap');
-    // printMessage(!objProgram.u_AmbientLight);
-    if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
-        || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight
-        || !objProgram.u_AmbientLight
-        || !objProgram.u_UsingPointLight || !objProgram.u_LightColor || !objProgram.u_LightPosition
-        || !objProgram.u_ModelMatrix
-        || !objProgram.u_ShadowMap || !objProgram.u_MvpMatrixFromLight) {
-        console.log('obj : Failed to get the storage location of attribute or uniform variable');
-        return;
-    }
+    initObjProgram(gl);
     /*********************obj文件创建program 代码end ****************************/
 
     fbo = initFramebufferObject(gl);
@@ -351,12 +186,8 @@ function main() {
         }
         usingPointLight = false;
     };
-    // document.onkeyup = function (evt) {
-    //     nums = 3;
-    // printMessage('h');
-    // };
     /*
-     * TODO 动画与其它
+     * 动画
      */
     // Start drawing
     // var currentAngle = 0.0; // Current rotation angle (degrees)
@@ -365,10 +196,10 @@ function main() {
         // currentAngle = animate(currentAngle);  // Update current rotation angle
         currentAngle = animate(currentAngle);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-        if (usingPointLight) {
-            drawTexture(gl, texProgram, box, boxTexture);
-            drawTexture(gl, texProgram, floor, floorTexture);
-        }
+        // if (usingPointLight) {
+        drawTexture(gl, texProgram, box, boxTexture);
+        drawTexture(gl, texProgram, floor, floorTexture);
+        // }
 
         deltaViewProjMatrix(deltaEye, deltaAt, deltaUp);
         renderScene(gl);
@@ -381,19 +212,8 @@ function main() {
 }
 
 var count = 0;
-// TODO
-// 如果不使用这个函数，就会加载不出纹理效果。
-// 只有使用了requestAnimationFrame以后才能正常运行
-// 还要在研究研究
-function mytrick(f) {
 
-    if (count < 2) {
-        window.requestAnimationFrame(f);
-        count++;
-    }
-}
-
-
+// 用于计算偏移量
 var deltaEye;
 var deltaAt;
 var deltaUp = zero;
@@ -479,6 +299,81 @@ function keyDownEvent(evt) {
     }
 }
 
+function init(canvas) {
+    fov = CameraPara.fov;
+    near = CameraPara.near;
+    far = CameraPara.far;
+    aspect = canvas.width / canvas.height;
+
+    changeViewProjMatrix();
+}
+
+function initTexProgram(gl) {
+    texProgram.a_Position = gl.getAttribLocation(texProgram, 'a_Position');
+    texProgram.a_TexCoord = gl.getAttribLocation(texProgram, 'a_TexCoord');
+    texProgram.u_MvpMatrix = gl.getUniformLocation(texProgram, 'u_MvpMatrix');
+    texProgram.u_Sampler = gl.getUniformLocation(texProgram, 'u_Sampler');
+
+    // texProgram.u_LightColor = gl.getUniformLocation(texProgram, 'u_LightColor');
+    texProgram.a_Color = gl.getAttribLocation(texProgram, 'a_Color');
+    texProgram.a_Normal = gl.getAttribLocation(texProgram, 'a_Normal');
+    texProgram.u_DirectionLight = gl.getUniformLocation(texProgram, 'u_DirectionLight');
+
+    texProgram.u_NormalMatrix = gl.getUniformLocation(texProgram, 'u_NormalMatrix');
+    texProgram.u_AmbientLight = gl.getUniformLocation(texProgram, 'u_AmbientLight');
+    texProgram.u_FogDist = gl.getUniformLocation(texProgram, 'u_FogDist');
+    texProgram.u_FogColor = gl.getUniformLocation(texProgram, 'u_FogColor');
+
+    // printMessage(texProgram.a_Color);
+    if (texProgram.a_Position < 0 || texProgram.a_TexCoord < 0 ||
+        !texProgram.u_MvpMatrix || !texProgram.u_Sampler ||
+        !texProgram.a_Color ||
+        !texProgram.a_Normal || !texProgram.u_DirectionLight ||
+        !texProgram.u_NormalMatrix || !texProgram.u_AmbientLight ||
+        !texProgram.u_FogColor || !texProgram.u_FogDist) {
+        console.log('Failed to get the storage location of attribute or uniform variable');
+        return;
+    }
+
+}
+
+/**
+ * 对 objProgram 中的的值进行获取
+ * @param gl
+ */
+function initObjProgram(gl) {
+    objProgram.a_Position = gl.getAttribLocation(objProgram, 'a_Position');
+    objProgram.a_Color = gl.getAttribLocation(objProgram, 'a_Color');
+    objProgram.a_Normal = gl.getAttribLocation(objProgram, 'a_Normal');
+    objProgram.u_MvpMatrix = gl.getUniformLocation(objProgram, 'u_MvpMatrix');
+    objProgram.u_NormalMatrix = gl.getUniformLocation(objProgram, 'u_NormalMatrix');
+    objProgram.u_DirectionLight = gl.getUniformLocation(objProgram, 'u_DirectionLight');
+    objProgram.u_AmbientLight = gl.getUniformLocation(objProgram, 'u_AmbientLight');
+
+    // 点光源
+    objProgram.u_UsingPointLight = gl.getUniformLocation(objProgram, 'u_UsingPointLight');
+    objProgram.u_LightColor = gl.getUniformLocation(objProgram, 'u_LightColor');
+    objProgram.u_LightPosition = gl.getUniformLocation(objProgram, 'u_LightPosition');
+    objProgram.u_ModelMatrix = gl.getUniformLocation(objProgram, 'u_ModelMatrix');
+    // 雾
+    objProgram.u_Eye = gl.getUniformLocation(objProgram, 'u_Eye');
+    objProgram.u_FogColor = gl.getUniformLocation(objProgram, 'u_FogColor');
+    objProgram.u_FogDist = gl.getUniformLocation(objProgram, 'u_FogDist');
+    // 影子
+    objProgram.u_MvpMatrixFromLight = gl.getUniformLocation(objProgram, 'u_MvpMatrixFromLight');
+    objProgram.u_ShadowMap = gl.getUniformLocation(objProgram, 'u_ShadowMap');
+    // printMessage(!objProgram.u_AmbientLight);
+    if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
+        || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight
+        || !objProgram.u_AmbientLight
+        || !objProgram.u_UsingPointLight || !objProgram.u_LightColor || !objProgram.u_LightPosition
+        || !objProgram.u_ModelMatrix
+        || !objProgram.u_ShadowMap || !objProgram.u_MvpMatrixFromLight) {
+        console.log('obj : Failed to get the storage location of attribute or uniform variable');
+        return;
+    }
+}
+
 /**
  *
  * @param deltaEye 眼睛位置的偏移量
@@ -514,186 +409,6 @@ function changeViewProjMatrix() {
         up.elements[0], up.elements[1], up.elements[2]);
     pLight = eye.elements;
 }
-
-/**##########################跟纹理有关的   start##################################/
- /**
- *
- * @param gl
- * @param target 要返回哪一个物体的顶点信息
- * @returns {null}
- */
-function initVertexBuffers4TexEntity(gl, target) {
-
-    var vertices = new Float32Array(target.vertex);
-    var texCoords = new Float32Array(target.texCoord);
-    var indices = new Uint8Array(target.index);
-    // var normals = new Float32Array()
-    var texObj = {}; // Utilize Object to to return multiple buffer objects together
-
-    // Write vertex information to buffer object
-    texObj.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 3, gl.FLOAT);
-    // o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
-    texObj.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
-    texObj.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
-    // texObj.normals = initArrayBufferForLaterUse(gl, )
-    if (!texObj.vertexBuffer || !texObj.texCoordBuffer || !texObj.indexBuffer) return null;
-
-    texObj.numIndices = indices.length;
-    texObj.texImagePath = target.texImagePath;
-    texObj.scale = target.scale;
-    texObj.translate = target.translate;
-    // texObj.normals = target.normals;
-    // Unbind the buffer object
-    gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
-    return texObj;
-}
-
-/**
- *
- * @param gl
- * @param program 纹理program
- * @param target 要贴上图像的实例：box、floor
- * @param flag 用来切换纹理单元的
- * @returns {*}
- */
-function initTextures(gl, program, target, flag) {
-    // var texture = {};
-
-    var texture0 = gl.createTexture();   // Create a texture object
-    if (!texture0) {
-        console.log('Failed to create the texture object');
-        return null;
-    }
-
-    var image0 = new Image();  // Create a image object
-    if (!image0) {
-        console.log('Failed to create the image object');
-        return null;
-    }
-    // Register the event handler to be called when image loading is completed
-    image0.onload = function () {
-        loadTexture(gl, texture0, image0, program, flag);
-    };
-
-    // Tell the browser to load an Image
-    image0.src = target.texImagePath;
-    // console.log(target.texImagePath);
-
-    return texture0;
-}
-
-
-/**
- *
- * @param gl
- * @param texture 纹理
- * @param image   图片
- * @param program
- * @param flag    确定纹理单元，这里不是0的都当作是1
- */
-function loadTexture(gl, texture, image, program, flag) {
-    // Write the image data to texture object
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);  // Flip the image Y coordinate
-    if (flag === 0) {
-        gl.activeTexture(gl.TEXTURE0);
-        // printMessage('hello');
-    } else {
-        gl.activeTexture(gl.TEXTURE1);
-    }
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-
-    // Pass the texure unit 0 to u_Sampler
-    gl.useProgram(program);
-    gl.uniform1i(program.u_Sampler, 0);
-
-    gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
-}
-
-
-// Assign the buffer objects and enable the assignment
-function initAttributeVariable(gl, a_attribute, buffer) {
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.vertexAttribPointer(a_attribute, buffer.num, buffer.type, false, 0, 0);
-    gl.enableVertexAttribArray(a_attribute);
-}
-
-// Coordinate transformation matrix
-
-/**
- *
- * @param gl gl上下文
- * @param program 纹理program
- * @param texEntity 要添加纹理的实体
- * @param texture 纹理
- */
-function drawTexture(gl, program, texEntity, texture) {
-    gl.useProgram(program);   // Tell that this program object is used
-
-    // Assign the buffer objects and enable the assignment
-    initAttributeVariable(gl, program.a_Position, texEntity.vertexBuffer);  // Vertex coordinates
-    // initAttributeVariable(gl, program.a_Normal, o.normalBuffer);    // Normal
-    initAttributeVariable(gl, program.a_TexCoord, texEntity.texCoordBuffer);// Texture coordinates
-    // initAttributeVariable(gl, program.a_Normal, texEntity.normals);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, texEntity.indexBuffer); // Bind indices
-
-    // Bind texture object to texture unit 0
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-
-    var g_modelMatrix = new Matrix4();
-    var g_mvpMatrix = new Matrix4();
-    // var g_normalMatrix = new Matrix4();
-    // Calculate a model matrix
-    var trans = texEntity.translate;
-    var scale = texEntity.scale;
-    g_modelMatrix.setTranslate(trans[0], trans[1], trans[2]);
-    g_modelMatrix.scale(scale[0], scale[1], scale[2]);
-    // viewProjMatrix.setLookAt()
-    g_mvpMatrix.set(viewProjMatrix);
-    // printMessage('eye[0]' + eye.elements[0]);
-    g_mvpMatrix.multiply(g_modelMatrix);
-    gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
-
-    gl.drawElements(gl.TRIANGLES, texEntity.numIndices, texEntity.indexBuffer.type, 0);   // Draw
-}
-
-function initArrayBufferForLaterUse(gl, data, num, type) {
-    var buffer = gl.createBuffer();   // Create a buffer object
-    if (!buffer) {
-        console.log('Failed to create the buffer object');
-        return null;
-    }
-    // Write date into the buffer object
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-
-    // Keep the information necessary to assign to the attribute variable later
-    buffer.num = num;
-    buffer.type = type;
-
-    return buffer;
-}
-
-function initElementArrayBufferForLaterUse(gl, data, type) {
-    var buffer = gl.createBuffer();　  // Create a buffer object
-    if (!buffer) {
-        console.log('Failed to create the buffer object');
-        return null;
-    }
-    // Write date into the buffer object
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data, gl.STATIC_DRAW);
-
-    buffer.type = type;
-
-    return buffer;
-}
-
-/**##############################跟纹理有关的 end ###################################*/
 
 
 /**^^^^^^^^^^^^^^^^^^^^^^^^^^跟Obj模型有关的 start ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/

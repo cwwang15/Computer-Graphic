@@ -2,7 +2,8 @@ window.addEventListener("load", main, false);
 
 function main() {
 
-    //绘制线段的函数绘制一条从(x1,y1)到(x2,y2)的线段，cxt和color两个参数意义与绘制点的函数相同，
+    //绘制线段的函数绘制一条从(x1,y1)到(x2,y2)的线段，
+    // cxt和color两个参数意义与绘制点的函数相同，
     function drawLine(cxt, x1, y1, x2, y2, color) {
 
         cxt.beginPath();
@@ -22,9 +23,10 @@ function main() {
     var cxt = c.getContext("2d");
 
 
-    //将canvas坐标整体偏移0.5，用于解决宽度为1个像素的线段的绘制问题，具体原理详见project文档
+    //将canvas坐标整体偏移0.5，
+    // 用于解决宽度为1个像素的线段的绘制问题，具体原理详见project文档
     cxt.translate(0.5, 0.5);
-    
+
     document.getElementById("myCanvas").style.position = 'absolute';
     init();
 
@@ -44,7 +46,7 @@ function main() {
         shapes = [];
         colors = [];
         for (var i = 0, len = polygon.length; i < len; i++) {
-        	colors.push(vertex_color[polygon[i][0]]);
+            colors.push(vertex_color[polygon[i][0]]);
         }
         document.getElementById('myCanvas').height = canvasSize.maxY;
         document.getElementById('myCanvas').width = canvasSize.maxX;
@@ -73,6 +75,8 @@ function main() {
         //找点
         var points = [];
         var point;
+        let x_;
+        let y_;
         for (var i = 0, len = polygon[index].length; i < len; i++) {
             x_ = vertex_pos[polygon[index][i]][0];
             y_ = vertex_pos[polygon[index][i]][1];
@@ -85,12 +89,12 @@ function main() {
         var edges = [];
         var parallel = [];
         for (var i = 0, len = points.length; i < len; i++) {
-        	if (points[i].y !== points[(i + 1) % len].y) {
-        	    edges.push({dot: [points[i], points[(i + 1) % len]]});
-        	}
-        	else {
-        		parallel.push({dot: [points[i], points[(i + 1) % len]]});
-        	}
+            if (points[i].y !== points[(i + 1) % len].y) {
+                edges.push({dot: [points[i], points[(i + 1) % len]]});
+            }
+            else {
+                parallel.push({dot: [points[i], points[(i + 1) % len]]});
+            }
         }
 
         //NET 
@@ -99,7 +103,7 @@ function main() {
         var NET = Array(ymax);
         var AET = Array(ymax);
         for (var i = 0; i < ymax; i++) {
-        	NET[i] = [];
+            NET[i] = [];
             AET[i] = [];
         }
 
@@ -107,18 +111,19 @@ function main() {
 
         for (var y = 0; y < ymax; y++) {
             for (var i = 0, edges_num = edges.length; i < edges_num; i++) {
-            	if (edges[i] !== 0) {
-            		for (var j = 0; j < 2; j++) {
-            			if (edges[i].dot[j].y === y) {
-            				var another = 1 - j;
-            				NET[y].push(newNETObject(edges[i].dot[j].x,
-            					(edges[i].dot[j].x - edges[i].dot[another].x) / (edges[i].dot[j].y - edges[i].dot[another].y), 
-            					edges[i].dot[another].y));
-            				edges[i] = 0;
-            				break;
-            			}
-            		}
-            	}
+                if (edges[i] !== 0) {
+                    for (var j = 0; j < 2; j++) {
+                        if (edges[i].dot[j].y === y) {
+                            var another = 1 - j;
+                            NET[y].push(newNETObject(edges[i].dot[j].x,
+                                (edges[i].dot[j].x - edges[i].dot[another].x)
+                                / (edges[i].dot[j].y - edges[i].dot[another].y),
+                                edges[i].dot[another].y));
+                            edges[i] = 0;
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -131,7 +136,8 @@ function main() {
         for (var y = 0; y < ymax; y++) {
             for (var i = 0, len = NET[y].length; i < len; i++) {
                 for (var j = y, max = NET[y][i].ymax; j < max; j++) {
-                	AET[j].push(newAETObject(NET[y][i].x + NET[y][i].dx * (j - y), NET[y][i].dx, NET[y][i].ymax));
+                    AET[j].push(newAETObject(NET[y][i].x + NET[y][i].dx * (j - y),
+                        NET[y][i].dx, NET[y][i].ymax));
                 }
             }
         }
@@ -140,31 +146,32 @@ function main() {
         var tmp;
         for (var y = 0; y < ymax; y++) {
             for (var i = 0, len = AET[y].length; i < len; i++) {
-            	for (var j = i + 1; j < len; j++) {
+                for (var j = i + 1; j < len; j++) {
                     if (AET[y][i].x > AET[y][j].x) {
                         tmp = AET[y][i];
                         AET[y][i] = AET[y][j];
                         AET[y][j] = tmp;
                     }
-            	}
+                }
             }
         }
         //画线
         for (var y = 0; y < ymax; y++) {
-        	for (var i = 0, len = AET[y].length; i < len; i += 2) {
+            for (var i = 0, len = AET[y].length; i < len; i += 2) {
                 drawLine(cxt, AET[y][i].x, y, AET[y][i + 1].x, y, color);
-        	}
+            }
         }
 
         //处理平行线
         for (var i = 0, len = parallel.length; i < len; i++) {
-        	drawLine(cxt, parallel[i].dot[0].x, parallel[i].dot[0].y, parallel[i].dot[1].x, parallel[i].dot[1].y, color);
+            drawLine(cxt, parallel[i].dot[0].x, parallel[i].dot[0].y,
+                parallel[i].dot[1].x, parallel[i].dot[1].y, color);
         }
     }
 
     function scan(polygon, colors) {
         for (var i = 0, len = polygon.length; i < len; i++) {
-        	scanLine(polygon, i, colors[i]);
+            scanLine(polygon, i, colors[i]);
         }
     }
 
@@ -173,8 +180,12 @@ function main() {
         var Color;
         var Shape;
         for (var i = 0; i < numShapes; i++) {
-            Color = "rgb(" + vertex_color[i][0] + "," + vertex_color[i][1] + "," + vertex_color[i][2] + ")";
-            Shape = {x: vertex_pos[i][0], y: vertex_pos[i][1], rad: pointRad, color: Color};
+            Color = "rgb(" + vertex_color[i][0] + "," +
+                vertex_color[i][1] + "," + vertex_color[i][2] + ")";
+            Shape = {
+                x: vertex_pos[i][0], y: vertex_pos[i][1],
+                rad: pointRad, color: Color
+            };
             shapes.push(Shape);
         }
     }
@@ -210,10 +221,10 @@ function main() {
 
         if (evt.preventDefault) {
             evt.preventDefault();
-        } 
+        }
         else if (evt.returnValue) {
             evt.returnValue = false;
-        } 
+        }
         return false;
     }
 

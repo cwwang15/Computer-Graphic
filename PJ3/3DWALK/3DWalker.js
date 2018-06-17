@@ -1,4 +1,18 @@
 window.addEventListener("load", main, false);
+document.onkeydown = function (evt) {
+
+    keyDownEvent(evt);
+    // printMessage(eye.elements[0]);
+};
+document.onkeyup = function (evt) {
+    if (evt.keyCode !== 70) {
+        nums = 0;
+
+    }
+    if (evt.keyCode === 70)
+        usingPointLight = false;
+};
+
 // ProgramObject.js (c) 2012 matsuda and kanda
 // Vertex shader for single color drawing
 
@@ -20,21 +34,23 @@ var SHADOW_FSHADER_SOURCE =
     '  gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);\n' + // Write the z-value in R
     '}\n';
 
-
+// perspective 的参数信息
 var fov;
 var near;
 var far;
 var aspect;
+// view 的参数信息
 var eye = new Vector3(CameraPara.eye);
 var at = new Vector3(CameraPara.at);
 var up = new Vector3(CameraPara.up);
-
+// 雾的参数信息
 var fogColor = new Float32Array([0.937, .931, 1.0]);
-var fogDist = new Float32Array([0, 1]);
+var fogDist = new Float32Array([3, 28]);
 
 
 var viewProjMatrix = new Matrix4();
 var viewProjMatrixFromLight = new Matrix4();
+
 var OFFSCREEN_WIDTH = 2048, OFFSCREEN_HEIGHT = 2048;
 var aspectFromLight = OFFSCREEN_WIDTH / OFFSCREEN_HEIGHT;
 var fovFromLight = 80;
@@ -46,6 +62,7 @@ var shadowProgram;
 //帧缓冲
 var fbo;
 
+// 保存模型信息
 var SceneObject = function () {
     this.model;  	 //a model contains some vertex buffer
     this.filePath;   //obj file path
@@ -54,10 +71,13 @@ var SceneObject = function () {
     this.transform;
     this.valid = 0;
 };
+
 var sceneObjList = [];
+
+// 平行光、环境光的配置信息
 var dLight = sceneDirectionLight;
 var aLight = sceneAmbientLight;
-// pLight点光源与眼睛相同。
+// pLight点光源与眼睛相同。是否使用点光源
 var usingPointLight = false;
 var pLight = CameraPara.eye;
 var pLightColor = scenePointLightColor;
@@ -107,14 +127,6 @@ function main() {
     }
     initObjProgram(gl);
     /*********************obj文件创建program 代码end ****************************/
-
-    fbo = initFramebufferObject(gl);
-    if (!fbo) {
-        console.log('Failed to initialize frame buffer object');
-        return;
-    }
-    gl.activeTexture(gl.TEXTURE2); // Set a texture object to the texture unit
-    gl.bindTexture(gl.TEXTURE_2D, fbo.texture);
 
 
     var box = initVertexBuffers4TexEntity(gl, boxRes);
@@ -174,21 +186,9 @@ function main() {
 
     // Calculate the view projection matrix
 
-    document.onkeydown = function (evt) {
-
-        keyDownEvent(evt);
-        // printMessage(eye.elements[0]);
-    };
-    document.onkeyup = function (evt) {
-        if (evt.keyCode !== 70) {
-            nums = 0;
-
-        }
-        usingPointLight = false;
-    };
     /*
-     * 动画
-     */
+      * 动画
+      */
     // Start drawing
     // var currentAngle = 0.0; // Current rotation angle (degrees)
 
@@ -231,9 +231,11 @@ var sin = Math.sin(rot_velocity);
 function keyDownEvent(evt) {
     // printMessage(move);
     if (evt.keyCode === 38) {
-        fogDist[1] += 1;
+        if (fogDist[1] < 300)
+            fogDist[1] += 1;
     } else if (evt.keyCode === 40) {
-        fogDist[1] -= 1;
+        if (fogDist[1] > fogDist[0])
+            fogDist[1] -= 1;
     } else if (evt.keyCode === 70) {
         usingPointLight = true;
     } else {
@@ -299,6 +301,10 @@ function keyDownEvent(evt) {
     }
 }
 
+/**
+ *  对 perspective 所需要的的参数进行初始化
+ * @param canvas
+ */
 function init(canvas) {
     fov = CameraPara.fov;
     near = CameraPara.near;
@@ -308,6 +314,10 @@ function init(canvas) {
     changeViewProjMatrix();
 }
 
+/**
+ * 将 texture program 中的值进行初始化
+ * @param gl
+ */
 function initTexProgram(gl) {
     texProgram.a_Position = gl.getAttribLocation(texProgram, 'a_Position');
     texProgram.a_TexCoord = gl.getAttribLocation(texProgram, 'a_TexCoord');
@@ -338,7 +348,7 @@ function initTexProgram(gl) {
 }
 
 /**
- * 对 objProgram 中的的值进行获取
+ * 对 objProgram 中的的值进行初始化
  * @param gl
  */
 function initObjProgram(gl) {
@@ -356,25 +366,32 @@ function initObjProgram(gl) {
     objProgram.u_LightPosition = gl.getUniformLocation(objProgram, 'u_LightPosition');
     objProgram.u_ModelMatrix = gl.getUniformLocation(objProgram, 'u_ModelMatrix');
     // 雾
-    objProgram.u_Eye = gl.getUniformLocation(objProgram, 'u_Eye');
+    // objProgram.u_Eye = gl.getUniformLocation(objProgram, 'u_Eye');
     objProgram.u_FogColor = gl.getUniformLocation(objProgram, 'u_FogColor');
     objProgram.u_FogDist = gl.getUniformLocation(objProgram, 'u_FogDist');
     // 影子
     objProgram.u_MvpMatrixFromLight = gl.getUniformLocation(objProgram, 'u_MvpMatrixFromLight');
     objProgram.u_ShadowMap = gl.getUniformLocation(objProgram, 'u_ShadowMap');
+    // phong
+    // objProgram.u_PhongViewMatrix = gl.getUniformLocation(objProgram, 'u_PhongViewMatrix');
+    objProgram.u_PhongLightPosition = gl.getUniformLocation(objProgram, 'u_PhongLightPosition');
+    objProgram.u_ModelViewMatrix = gl.getUniformLocation(objProgram, 'u_ModelViewMatrix');
     // printMessage(!objProgram.u_AmbientLight);
     if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
         || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight
         || !objProgram.u_AmbientLight
         || !objProgram.u_UsingPointLight || !objProgram.u_LightColor || !objProgram.u_LightPosition
         || !objProgram.u_ModelMatrix
-        || !objProgram.u_ShadowMap || !objProgram.u_MvpMatrixFromLight) {
+        || !objProgram.u_ShadowMap || !objProgram.u_MvpMatrixFromLight
+        || !objProgram.u_PhongLightPosition
+        || !objProgram.u_ModelViewMatrix) {
         console.log('obj : Failed to get the storage location of attribute or uniform variable');
         return;
     }
 }
 
 /**
+ * 传入 eye，look-at，up 向量的偏移量，计算新的位置
  *
  * @param deltaEye 眼睛位置的偏移量
  * @param deltaAt  look-at-point的偏移量
@@ -395,6 +412,9 @@ function deltaViewProjMatrix(deltaEye, deltaAt, deltaUp) {
     }
 }
 
+/**
+ * 更新 viewProj 矩阵
+ */
 function changeViewProjMatrix() {
     /*
      * view 与 project 放一起了
@@ -412,6 +432,11 @@ function changeViewProjMatrix() {
 
 
 /**^^^^^^^^^^^^^^^^^^^^^^^^^^跟Obj模型有关的 start ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
+/**
+ * 把模型文件绘制到屏幕上
+ *
+ * @param gl
+ */
 function renderScene(gl) {
 
     gl.useProgram(objProgram);
@@ -419,6 +444,14 @@ function renderScene(gl) {
     var normalMatrix = new Matrix4();
     var mvpMatrix = new Matrix4();
     var mvpMatrixFromLight = new Matrix4();
+    var viewMatrix = new Matrix4();
+    var modelViewMatrix = new Matrix4();
+    viewMatrix.setLookAt(eye.elements[0], eye.elements[1], eye.elements[2],
+        at.elements[0], at.elements[1], at.elements[2],
+        up.elements[0], up.elements[1], up.elements[2]);
+
+    // gl.uniformMatrix4fv(objProgram.u_PhongViewMatrix, false, viewMatrix.elements);
+    gl.uniform3f(objProgram.u_PhongLightPosition, 1.0, 1.9, 3.3);
     // var mvpMatrixFromLight_p = new Matrix4();
     gl.uniform3f(objProgram.u_DirectionLight, dLight[0], dLight[1], dLight[2]);
     gl.uniform3f(objProgram.u_AmbientLight, aLight[0], aLight[1], aLight[2]);
@@ -426,7 +459,7 @@ function renderScene(gl) {
     gl.uniform3f(objProgram.u_LightColor, pLightColor[0], pLight[1], pLightColor[2]);
     gl.uniform3fv(objProgram.u_FogColor, fogColor);
     gl.uniform2fv(objProgram.u_FogDist, fogDist);
-    gl.uniform4fv(objProgram.u_Eye, new Float32Array(eye.elements));
+    // gl.uniform4fv(objProgram.u_Eye, new Float32Array(eye.elements));
     // console.log(pLightColor);
     gl.uniform3f(objProgram.u_LightPosition, eye.elements[0], eye.elements[1], eye.elements[2]);
     for (var i = 0, num = sceneObjList.length; i < num; i++) {
@@ -445,6 +478,12 @@ function renderScene(gl) {
             modelMatrix.setIdentity();
             manipulateObj(so.transform, modelMatrix, so.objname);
             gl.uniformMatrix4fv(objProgram.u_ModelMatrix, false, modelMatrix.elements);
+
+            modelViewMatrix.setLookAt(eye.elements[0], eye.elements[1], eye.elements[2],
+                at.elements[0], at.elements[1], at.elements[2],
+                up.elements[0], up.elements[1], up.elements[2]);
+            modelViewMatrix.multiply(modelMatrix);
+            gl.uniformMatrix4fv(objProgram.u_ModelViewMatrix, false, modelViewMatrix.elements);
 
             mvpMatrix.set(viewProjMatrix).multiply(modelMatrix);
             gl.uniformMatrix4fv(objProgram.u_MvpMatrix, false, mvpMatrix.elements);
@@ -467,12 +506,12 @@ function renderScene(gl) {
 }
 
 /**
- * 对obj进行转换
+ * 对obj进行转换，比如缩放、平移、旋转，以及鸟的动画效果
+ *
  * @param op          一个数组，记录要执行什么操作
  * @param modelMatrix 被操作的矩阵
  * @param name
  */
-var test = 0;
 
 function manipulateObj(op, modelMatrix, name) {
     for (var i = 0; i < op.length; i++) {
@@ -587,64 +626,6 @@ function onReadComplete(gl, model, objDoc) {
     return drawingInfo;
 }
 
-function initFramebufferObject(gl) {
-    var framebuffer, texture, depthBuffer;
-
-    // Define the error handling function
-    var error = function () {
-        if (framebuffer) gl.deleteFramebuffer(framebuffer);
-        if (texture) gl.deleteTexture(texture);
-        if (depthBuffer) gl.deleteRenderbuffer(depthBuffer);
-        return null;
-    };
-
-    // Create a framebuffer object (FBO)
-    framebuffer = gl.createFramebuffer();
-    if (!framebuffer) {
-        console.log('Failed to create frame buffer object');
-        return error();
-    }
-
-    // Create a texture object and set its size and parameters
-    texture = gl.createTexture(); // Create a texture object
-    if (!texture) {
-        console.log('Failed to create texture object');
-        return error();
-    }
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-
-    // Create a renderbuffer object and Set its size and parameters
-    depthBuffer = gl.createRenderbuffer(); // Create a renderbuffer object
-    if (!depthBuffer) {
-        console.log('Failed to create renderbuffer object');
-        return error();
-    }
-    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT);
-
-    // Attach the texture and the renderbuffer object to the FBO
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
-
-    // Check if FBO is configured correctly
-    var e = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-    if (gl.FRAMEBUFFER_COMPLETE !== e) {
-        console.log('Frame buffer object is incomplete: ' + e.toString());
-        return error();
-    }
-
-    framebuffer.texture = texture; // keep the required object
-
-    // Unbind the buffer object
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.bindTexture(gl.TEXTURE_2D, null);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-
-    return framebuffer;
-}
 
 /**^^^^^^^^^^^^^^^^^^^^^^^^^^跟Obj模型有关的 end ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 
@@ -653,9 +634,21 @@ function printMessage(message) {
     mb.innerHTML = "message:\t" + message;
 }
 
+/**
+ * 鸟的旋转速度的配置信息
+ *
+ * @type {number}
+ */
 var ANGLE_STEP = 90;   // The increments of rotation angle (degrees)
 var currentAngle = 0;
 var last = Date.now(); // Last time that this function was called
+
+/**
+ * 更新鸟的旋转角度
+ *
+ * @param angle
+ * @returns {number}
+ */
 function animate(angle) {
     var now = Date.now();   // Calculate the elapsed time
     var elapsed = now - last;

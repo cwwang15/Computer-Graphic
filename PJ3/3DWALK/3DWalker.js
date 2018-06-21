@@ -77,6 +77,7 @@ var sceneObjList = [];
 // 平行光、环境光的配置信息
 var dLight = sceneDirectionLight;
 var aLight = sceneAmbientLight;
+var sLight = sceneDirectionLight;
 // pLight点光源与眼睛相同。是否使用点光源
 var usingPointLight = false;
 var pLight = CameraPara.eye;
@@ -218,9 +219,9 @@ var deltaEye;
 var deltaAt;
 var deltaUp = zero;
 var nums;
-// 每60帧移动MOVE_VELOCITY，据说requestAnimationFrame是每秒60帧
+// 每60帧移动 MOVE_VELOCITY，据说 requestAnimationFrame 是每秒60帧
 var move_velocity = MOVE_VELOCITY / 60.0;
-var rot_velocity = ROT_VELOCITY / 120.0;
+var rot_velocity = ROT_VELOCITY / 360.0;
 var cos = Math.cos(rot_velocity);
 var sin = Math.sin(rot_velocity);
 
@@ -451,7 +452,7 @@ function renderScene(gl) {
         up.elements[0], up.elements[1], up.elements[2]);
 
     // gl.uniformMatrix4fv(objProgram.u_PhongViewMatrix, false, viewMatrix.elements);
-    gl.uniform3f(objProgram.u_PhongLightPosition, 1.0, 1.9, 3.3);
+    gl.uniform3f(objProgram.u_PhongLightPosition, sLight[0], sLight[1], sLight[2]);
     // var mvpMatrixFromLight_p = new Matrix4();
     gl.uniform3f(objProgram.u_DirectionLight, dLight[0], dLight[1], dLight[2]);
     gl.uniform3f(objProgram.u_AmbientLight, aLight[0], aLight[1], aLight[2]);

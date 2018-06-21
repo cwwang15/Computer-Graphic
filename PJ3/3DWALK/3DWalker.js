@@ -471,7 +471,7 @@ function renderScene(gl) {
         if (so.objDoc != null && so.objDoc.isMTLComplete()) { // OBJ and all MTLs are available
             so.drawingInfo = onReadComplete(gl, so.model, so.objDoc);
             sceneObjList[i].objname = so.objDoc.objects[0].name;
-            so.objname = so.objDoc.objects[0].name;
+            so.objname = so.objDoc.objects[0].name.trim();
             so.objDoc = null;
             // console.log(so.objname === 'bird');
         }

@@ -68,7 +68,6 @@ var OBJECT_FSHADER_SOURCE =
     'uniform vec3 u_FogColor;\n' +
     'uniform vec2 u_FogDist;\n' +
     'varying float v_Dist;\n' +
-    // TODO 影子
     'uniform sampler2D u_ShadowMap;\n' +
     'varying vec4 v_PositionFromLight;\n' +
     // DONE! phong
@@ -109,7 +108,7 @@ var OBJECT_FSHADER_SOURCE =
     '  vec3 shadowCoord = (v_PositionFromLight.xyz / v_PositionFromLight.w) / 2.0 + 0.5;\n' +
     '  vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);\n' +
     '  float depth = rgbaDepth.r;\n' + // Retrieve the z-value from R
-    '  visibility = (shadowCoord.z > depth + 0.005) ? 0.1 : 1.0;\n' +
+    '  visibility = (shadowCoord.z > depth + 0.005) ? 0.3 : 1.0;\n' +
     // 点光源
     '  if (u_UsingPointLight) {\n' +
     '    visibility = 0.4;\n' +

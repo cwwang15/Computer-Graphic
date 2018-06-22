@@ -1,3 +1,37 @@
+function initVertexBuffers(gl, program) {
+    var o = {}; // Utilize Object object to return multiple buffer objects
+    o.vertexBuffer = createEmptyArrayBuffer(gl, program.a_Position, 3, gl.FLOAT);
+    o.normalBuffer = createEmptyArrayBuffer(gl, program.a_Normal, 3, gl.FLOAT);
+    o.colorBuffer = createEmptyArrayBuffer(gl, program.a_Color, 4, gl.FLOAT);
+    o.indexBuffer = gl.createBuffer();
+    if (!o.vertexBuffer || !o.normalBuffer || !o.colorBuffer || !o.indexBuffer) {
+        return null;
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    return o;
+}
+
+// Create a buffer object, assign it to attribute variables, and enable the assignment
+function createEmptyArrayBuffer(gl, a_attribute, num, type) {
+    var buffer = gl.createBuffer();  // Create a buffer object
+    if (!buffer) {
+        console.log('Failed to create the buffer object');
+        return null;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.vertexAttribPointer(a_attribute, num, type, false, 0, 0);  // Assign the buffer object to the attribute variable
+    gl.enableVertexAttribArray(a_attribute);  // Enable the assignment
+
+    //在buffer中填入type和element数量信息，以备之后绘制过程中绑定shader使用
+    buffer.num = num;
+    buffer.type = type;
+
+    return buffer;
+}
+
+
 /**
  *
  * @param gl gl上下文

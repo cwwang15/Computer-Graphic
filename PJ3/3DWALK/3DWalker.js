@@ -54,6 +54,10 @@ var viewProjMatrixFromLight = new Matrix4();
 var OFFSCREEN_WIDTH = 2048, OFFSCREEN_HEIGHT = 2048;
 var aspectFromLight = OFFSCREEN_WIDTH / OFFSCREEN_HEIGHT;
 var fovFromLight = 80;
+var eyeFromLight = CameraPara.eye;
+var atFromLight = CameraPara.at;
+var upFromLight = CameraPara.up;
+
 
 var objProgram;
 var texProgram;
@@ -61,6 +65,8 @@ var shadowProgram;
 
 //帧缓冲
 var fbo;
+
+var canvas;
 
 // 保存模型信息
 var SceneObject = function () {
@@ -87,7 +93,7 @@ var tick;
 function main() {
     // Retrieve <canvas> element
 
-    var canvas = document.getElementById('webgl');
+    canvas = document.getElementById('webgl');
 
     // Get the rendering context for WebGL
     var gl = getWebGLContext(canvas);
@@ -119,6 +125,16 @@ function main() {
         console.log('Failed to get the storage location of attribute or uniform variable from shadowProgram');
         return;
     }
+
+    // Initialize framebuffer object (FBO)
+    fbo = initFramebufferObject(gl);
+    if (!fbo) {
+        console.log('Failed to initialize frame buffer object');
+        return;
+    }
+
+    gl.activeTexture(gl.TEXTURE2); // Set a texture object to the texture unit
+    gl.bindTexture(gl.TEXTURE_2D, fbo.texture);
 
     objProgram = createProgram(gl, OBJECT_VSHADER_SOURCE, OBJECT_FSHADER_SOURCE);
 
@@ -167,10 +183,7 @@ function main() {
         sceneObj.kads = obj.kads;
         sceneObj.transform = obj.transform;
         sceneObj.objFilePath = obj.objFilePath;
-        // printMessage(obj.transform[0].content);
         sceneObj.color = obj.color;
-        // console.log('color: ' + obj.color);
-        // printMessage('scene color: ' + sceneObj.color);
         //补齐最后一个alpha值
         if (sceneObj.color.length === 3) {
             sceneObj.color.push(1.0);
@@ -198,12 +211,12 @@ function main() {
         currentAngle = animate(currentAngle);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
         // if (usingPointLight) {
-        drawTexture(gl, texProgram, box, boxTexture);
-        drawTexture(gl, texProgram, floor, floorTexture);
         // }
 
         deltaViewProjMatrix(deltaEye, deltaAt, deltaUp);
         renderScene(gl);
+        drawTexture(gl, texProgram, box, boxTexture);
+        drawTexture(gl, texProgram, floor, floorTexture);
         // last = Date.now();
         window.requestAnimationFrame(tick);
     };
@@ -230,7 +243,6 @@ var sin = Math.sin(rot_velocity);
  * @param evt 响应键盘事件
  */
 function keyDownEvent(evt) {
-    // printMessage(move);
     if (evt.keyCode === 38) {
         if (fogDist[1] < 300)
             fogDist[1] += 1;
@@ -311,7 +323,11 @@ function init(canvas) {
     near = CameraPara.near;
     far = CameraPara.far;
     aspect = canvas.width / canvas.height;
-
+    viewProjMatrixFromLight.setPerspective(fovFromLight, aspectFromLight, near, far * 2.0);
+    viewProjMatrixFromLight.lookAt(eyeFromLight[0], eyeFromLight[1], eyeFromLight[2],
+        atFromLight[0], atFromLight[1], atFromLight[2],
+        upFromLight[0], upFromLight[1], upFromLight[2]);
+    // viewProjMatrixFromLight.lookAt();
     changeViewProjMatrix();
 }
 
@@ -335,13 +351,16 @@ function initTexProgram(gl) {
     texProgram.u_FogDist = gl.getUniformLocation(texProgram, 'u_FogDist');
     texProgram.u_FogColor = gl.getUniformLocation(texProgram, 'u_FogColor');
 
-    // printMessage(texProgram.a_Color);
+    texProgram.u_MvpMatrixFromLight = gl.getUniformLocation(texProgram, 'u_MvpMatrixFromLight');
+    texProgram.u_ShadowMap = gl.getUniformLocation(texProgram, 'u_ShadowMap');
+    printMessage(texProgram.u_MvpMatrixFromLight);
     if (texProgram.a_Position < 0 || texProgram.a_TexCoord < 0 ||
         !texProgram.u_MvpMatrix || !texProgram.u_Sampler ||
         !texProgram.a_Color ||
         !texProgram.a_Normal || !texProgram.u_DirectionLight ||
         !texProgram.u_NormalMatrix || !texProgram.u_AmbientLight ||
-        !texProgram.u_FogColor || !texProgram.u_FogDist) {
+        !texProgram.u_FogColor || !texProgram.u_FogDist ||
+        !texProgram.u_ShadowMap || !texProgram.u_MvpMatrixFromLight) {
         console.log('Failed to get the storage location of attribute or uniform variable');
         return;
     }
@@ -377,7 +396,6 @@ function initObjProgram(gl) {
     // objProgram.u_PhongViewMatrix = gl.getUniformLocation(objProgram, 'u_PhongViewMatrix');
     objProgram.u_PhongLightPosition = gl.getUniformLocation(objProgram, 'u_PhongLightPosition');
     objProgram.u_ModelViewMatrix = gl.getUniformLocation(objProgram, 'u_ModelViewMatrix');
-    // printMessage(!objProgram.u_AmbientLight);
     if (objProgram.a_Position < 0 || objProgram.a_Color < 0 || objProgram.a_Normal < 0
         || !objProgram.u_MvpMatrix || !objProgram.u_NormalMatrix || !objProgram.u_DirectionLight
         || !objProgram.u_AmbientLight
@@ -424,8 +442,8 @@ function changeViewProjMatrix() {
     viewProjMatrix.lookAt(eye.elements[0], eye.elements[1], eye.elements[2],
         at.elements[0], at.elements[1], at.elements[2],
         up.elements[0], up.elements[1], up.elements[2]);
-    viewProjMatrixFromLight.setPerspective(fovFromLight, aspectFromLight, near, far);
-    viewProjMatrixFromLight.lookAt(eye.elements[0], eye.elements[1], eye.elements[2],
+    viewProjMatrixFromLight.setPerspective(fovFromLight, aspectFromLight, near, far * 2);
+    viewProjMatrixFromLight.lookAt(CameraPara.eye[0], eye.elements[1], eye.elements[2],
         at.elements[0], at.elements[1], at.elements[2],
         up.elements[0], up.elements[1], up.elements[2]);
     pLight = eye.elements;
@@ -438,9 +456,10 @@ function changeViewProjMatrix() {
  *
  * @param gl
  */
-function renderScene(gl) {
+var times = 1;
+var soList = [];
 
-    gl.useProgram(objProgram);
+function renderScene(gl) {
     var modelMatrix = new Matrix4();
     var normalMatrix = new Matrix4();
     var mvpMatrix = new Matrix4();
@@ -451,6 +470,31 @@ function renderScene(gl) {
         at.elements[0], at.elements[1], at.elements[2],
         up.elements[0], up.elements[1], up.elements[2]);
 
+    gl.useProgram(shadowProgram);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);               // Change the drawing destination to FBO
+    gl.viewport(0, 0, OFFSCREEN_HEIGHT, OFFSCREEN_HEIGHT); // Set view port for FBO
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);   // Clear FBO
+    for (let k = 0; k < soList.length; k++) {
+        so = soList[k];
+        if (so.drawingInfo) {
+            modelMatrix.setIdentity();
+            manipulateObj(so.transform, modelMatrix, so.objname);
+            mvpMatrix.set(viewProjMatrixFromLight).multiply(modelMatrix);
+            gl.uniformMatrix4fv(shadowProgram.u_MvpMatrix, false, mvpMatrix.elements);
+
+            initAttributeVariable(gl, shadowProgram.a_Position, so.model.vertexBuffer);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, so.model.indexBuffer);
+            // Draw
+            gl.drawElements(gl.TRIANGLES, so.drawingInfo.indices.length, gl.UNSIGNED_SHORT, 0);
+        }
+    }
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);               // Change the drawing destination to color buffer
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(objProgram);
+    gl.uniform1i(objProgram.u_ShadowMap, 2);
     // gl.uniformMatrix4fv(objProgram.u_PhongViewMatrix, false, viewMatrix.elements);
     gl.uniform3f(objProgram.u_PhongLightPosition, sLight[0], sLight[1], sLight[2]);
     // var mvpMatrixFromLight_p = new Matrix4();
@@ -461,7 +505,6 @@ function renderScene(gl) {
     gl.uniform3fv(objProgram.u_FogColor, fogColor);
     gl.uniform2fv(objProgram.u_FogDist, fogDist);
     // gl.uniform4fv(objProgram.u_Eye, new Float32Array(eye.elements));
-    // console.log(pLightColor);
     gl.uniform3f(objProgram.u_LightPosition, eye.elements[0], eye.elements[1], eye.elements[2]);
     for (var i = 0, num = sceneObjList.length; i < num; i++) {
 
@@ -473,8 +516,19 @@ function renderScene(gl) {
             sceneObjList[i].objname = so.objDoc.objects[0].name;
             so.objname = so.objDoc.objects[0].name.trim();
             so.objDoc = null;
-            // console.log(so.objname === 'bird');
+            // soList[i] = so;
+            soList[soList.length] = {};
+            soList[soList.length - 1].objname = so.objname;
+            soList[soList.length - 1].transform = so.transform;
+            soList[soList.length - 1].drawingInfo = so.drawingInfo;
+            soList[soList.length - 1].model = so.model;
         }
+
+    }
+
+    // gl.useProgram(objProgram);
+    for (let j = 0; j < soList.length; j++) {
+        so = soList[j];
         if (so.drawingInfo) {
             modelMatrix.setIdentity();
             manipulateObj(so.transform, modelMatrix, so.objname);
@@ -488,7 +542,8 @@ function renderScene(gl) {
 
             mvpMatrix.set(viewProjMatrix).multiply(modelMatrix);
             gl.uniformMatrix4fv(objProgram.u_MvpMatrix, false, mvpMatrix.elements);
-
+            mvpMatrixFromLight.set(viewProjMatrixFromLight).multiply(modelMatrix);
+            gl.uniformMatrix4fv(objProgram.u_MvpMatrixFromLight, false, mvpMatrixFromLight.elements);
             normalMatrix.setInverseOf(modelMatrix);
             normalMatrix.transpose();
             gl.uniformMatrix4fv(objProgram.u_NormalMatrix, false, normalMatrix.elements);
@@ -619,7 +674,6 @@ function onReadComplete(gl, model, objDoc) {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, model.colorBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, drawingInfo.colors, gl.STATIC_DRAW);
-    // console.log('drawingInfo.colors: ' + drawingInfo.colors);
     // Write the indices to the buffer object
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, drawingInfo.indices, gl.STATIC_DRAW);

@@ -7,6 +7,7 @@
  */
 function drawTexture(gl, program, texEntity, texture) {
     gl.useProgram(program);   // Tell that this program object is used
+    gl.uniform1i(program.u_ShadowMap, 2);
     // gl.uniform3f(program.u_LightColor, 1.0, 1.0, 1.0);
     gl.uniform3f(program.u_DirectionLight, dLight[0], dLight[1], dLight[2]);
     gl.uniform3f(program.u_AmbientLight, aLight[0], aLight[1], aLight[2]);
@@ -27,6 +28,7 @@ function drawTexture(gl, program, texEntity, texture) {
 
     var g_modelMatrix = new Matrix4();
     var g_mvpMatrix = new Matrix4();
+    var mvpMatrixFromLight = new Matrix4();
     // var g_normalMatrix = new Matrix4();
     // Calculate a model matrix
     var trans = texEntity.translate;
@@ -40,6 +42,9 @@ function drawTexture(gl, program, texEntity, texture) {
     var normalMatrix = new Matrix4();
     normalMatrix.setInverseOf(g_modelMatrix);
     normalMatrix.transpose();
+
+    mvpMatrixFromLight.set(viewProjMatrix).multiply(g_modelMatrix);
+    gl.uniformMatrix4fv(program.u_MvpMatrixFromLight, false, mvpMatrixFromLight.elements);
     gl.uniformMatrix4fv(program.u_NormalMatrix, false, normalMatrix.elements);
     gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
 

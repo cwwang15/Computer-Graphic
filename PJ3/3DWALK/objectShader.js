@@ -106,18 +106,17 @@ var OBJECT_FSHADER_SOURCE =
     '  float visibility = 1.0;\n' +
     // 影子
     // '  vec3 shadowCoord = vec3(v_PositionFromLight);\n'+
-
+    '  vec3 shadowCoord = (v_PositionFromLight.xyz / v_PositionFromLight.w) / 2.0 + 0.5;\n' +
+    '  vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);\n' +
+    '  float depth = rgbaDepth.r;\n' + // Retrieve the z-value from R
+    '  visibility = (shadowCoord.z > depth + 0.005) ? 0.1 : 1.0;\n' +
     // 点光源
     '  if (u_UsingPointLight) {\n' +
-    '    vec3 shadowCoord = (v_PositionFromLight.xyz / v_PositionFromLight.w) / 2.0 + 0.5;\n' +
-    '    vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);\n' +
-    '    float depth = rgbaDepth.r;\n' + // Retrieve the z-value from R
-    '    visibility = (shadowCoord.z > depth + 0.005) ? 0.7 : 1.0;\n' +
-
+    '    visibility = 0.4;\n' +
     '    vec3 diffusePoint = Kdp / (0.01 * pow(pointLightDist, 2.0) + 0.01 * pointLightDist + 0.4) * u_LightColor * v_Color.rgb * cos;\n' +
     '    gl_FragColor = vec4((diffusePoint + specular + diffuseDirection + ambient + color)*visibility , v_Color.a);\n' +
     '  }\n' +
     '  else\n' +
-    '    gl_FragColor = vec4(ambient + color + diffuseDirection +  specular, v_Color.a);\n' +
+    '    gl_FragColor = vec4((ambient + color + diffuseDirection +  specular) * visibility, v_Color.a);\n' +
     // '  gl_FragColor = vec4(color, v_Color.a);\n'+
     '}\n';
